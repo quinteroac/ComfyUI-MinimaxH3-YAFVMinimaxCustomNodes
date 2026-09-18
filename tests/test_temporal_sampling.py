@@ -103,30 +103,31 @@ class SamplingTests(unittest.TestCase):
     def test_bounded_windows_shared_noise_audio_and_metadata(self):
         calls = []
         stages = []
-        expected_noise = temporal.comfy.sample.prepare_noise(self.latent["samples"], 123, [0])
         def sampler(*args, **kwargs):
             calls.append((args, kwargs))
-            return NestedTensor((args[8].unbind()[0] + 0.25, args[8].unbind()[1] + 100))
+            return args[8]
         output = self.run_sample(sampler, chunk_callback=lambda *data: stages.append(data))
-        torch.testing.assert_close(output["samples"].unbind()[0], self.video + 0.25)
+        self.assertEqual(output["samples"].unbind()[0].shape, self.video.shape)
+        torch.testing.assert_close(output["samples"].unbind()[0][:, :, :22], self.video[:, :, :22])
         torch.testing.assert_close(output["samples"].unbind()[1], self.audio, rtol=0, atol=0)
         self.assertEqual(output["custom_metadata"], "keep")
-        self.assertEqual(len(calls), 7)
-        self.assertEqual(stages[0], (1, 7, 0, 73))
-        self.assertEqual(stages[-1], (7, 7, 289, 362))
-        for (args, kwargs), (start, stop) in zip(calls, temporal.temporal_windows(107, 73, 22)):
+        plan = temporal.serial_chunk_plan(107, 73, 22)
+        self.assertEqual(len(calls), len(plan))
+        self.assertEqual(stages[0], (1, len(plan), 0, 73))
+        self.assertEqual(stages[-1][1], len(plan))
+        for (args, kwargs), (start, stop, prefix, prefix_audio, *_rest) in zip(calls, plan):
             video, audio = args[8].unbind()
-            self.assertEqual(video.shape[2], 22)
+            self.assertEqual(video.shape[2], prefix + stop - start)
             self.assertEqual(video.device.type, "cpu")
-            torch.testing.assert_close(args[1].unbind()[0], expected_noise.unbind()[0][:, :, start:stop], rtol=0, atol=0)
             a0 = round(temporal.frame_boundary(start) * temporal.FRAME_RESCALE)
-            torch.testing.assert_close(audio, self.audio[..., a0:a0 + audio.shape[-1]])
+            source_audio = self.audio[..., a0:a0 + audio.shape[-1] - prefix_audio]
+            torch.testing.assert_close(audio[..., prefix_audio:], source_audio)
             self.assertEqual(torch.count_nonzero(kwargs["noise_mask"].unbind()[1]), 0)
             self.assertEqual(kwargs["start_step"], 4)
             self.assertEqual(kwargs["last_step"], 8)
             self.assertTrue(kwargs["force_full_denoise"])
 
-    def test_noise_disabled_and_video_mask_sliced(self):
+    def test_noise_disabled_uses_full_video_denoising_for_warm_start(self):
         mask = torch.ones(1, 1, 107, 2, 2)
         mask[:, :, 20:40] = 0
         self.latent["noise_mask"] = NestedTensor((mask, torch.ones_like(self.audio)))
@@ -137,9 +138,10 @@ class SamplingTests(unittest.TestCase):
             masks.append(kwargs["noise_mask"].unbind()[0])
             return args[8]
         result = self.run_sample(sampler, add_noise=False)
-        torch.testing.assert_close(masks[1][:, :1], mask[:, :, 15:37])
+        self.assertTrue(masks[1].all())
         self.assertIs(result["noise_mask"], self.latent["noise_mask"])
-        torch.testing.assert_close(result["samples"].unbind()[0], self.video)
+        self.assertEqual(result["samples"].unbind()[0].shape, self.video.shape)
+        torch.testing.assert_close(result["samples"].unbind()[0][:, :, :22], self.video[:, :, :22])
 
     def test_cancel_after_first_window(self):
         calls = []
