@@ -92,6 +92,16 @@ def window_conditioning(conditioning, frame_start, frame_end, height, width):
         if "minimax_keyframes" in metadata:
             guides = []
             for guide in metadata["minimax_keyframes"]:
+                if guide.get("yafv_context"):
+                    item = dict(guide)
+                    video = item.get("latent")
+                    if video is not None and video.shape[-2:] != (height, width):
+                        batch, channels, time, h, w = video.shape
+                        frames = video.movedim(1, 2).reshape(batch * time, channels, h, w)
+                        frames = F.interpolate(frames, size=(height, width), mode="bilinear", align_corners=False)
+                        item["latent"] = frames.reshape(batch, time, channels, height, width).movedim(2, 1).contiguous()
+                    guides.append(item)
+                    continue
                 # Continuation context is already expressed in the local
                 # chunk's coordinate system.  Do not treat it as a source
                 # timeline keyframe (it has no resolved_frame_index).

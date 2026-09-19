@@ -2,6 +2,31 @@
 
 I need to get profit from the codex subscription 
 
+## YAFV · H3 Video Extend / Encode AV
+
+This pack provides H3 continuation directly, with no H3-Extend dependency or
+global model patches. It requires native ComfyUI H3 support for arbitrary
+video/audio keyframe positions. Disable the old **ComfyUI-MiniMax-H3-Extend**
+pack and restart ComfyUI: its startup patch replaces that native support.
+
+Connect a previous H3 latent to **YAFV · H3 Video Extend**, then connect its
+positive conditioning and new latent to Two Pass (or a native sampler).
+For external footage, **YAFV · H3 Encode AV** encodes video at 24 fps and optional
+audio into a context latent. Continuation inherits the source resolution.
+`context_frames` counts trailing latent positions; `length` counts new video
+frames. Video context ends at frame zero; audio context ends just before it.
+The node supports first/last images, automatic last-frame pinning, batched
+reference images, reference video and reference audio. Audio references require
+`audio_vae`. Temporal Pass 2 preserves context at each window's local origin
+and resizes its video guides to the window canvas.
+
+Existing workflows using `MiniMaxH3VideoExtendPatched` or
+`MiniMaxH3EncodeAVPatched` load through local aliases. This pack does not inject
+classes into ComfyUI's native namespace; third-party nodes relying on H3-Extend's
+namespace injection must be replaced with the local Video Extend node.
+Reference preparation was adapted from kat3ri/ComfyUI-MiniMax-H3-Extend
+(declared MIT) and the native ComfyUI nodes.
+
 ## YAFV · Editor multimedia
 
 Restart ComfyUI and reload the browser after installing/updating this pack. Add
@@ -42,3 +67,48 @@ multiple video tracks or animated brush interpolation in this version.
 Tests: `python -m unittest discover -s tests -v` using ComfyUI's Python environment.
 The editor tests use synthetic media and an isolated HTTP server, without changing
 ComfyUI's queue or loading models.
+
+## YAFV · Prompts para video
+
+Add **YAFV → video → YAFV · Prompts para video**. Connect `generated_prompt`
+(STRING), `first_frame` (IMAGE) and `last_frame` (IMAGE) to your image-to-video
+node. Missing frames return `None`; connect them to optional image inputs that
+accept missing images, such as MiniMax H3 Image to Video.
+
+Each list element contains a prompt and optional first/last images. Use **Nuevo**,
+load images by dropping files or clicking their previews, then **Agregar**.
+Select an element to execute it with ComfyUI's normal queue. **Guardar cambios**
+updates an element; the remove controls delete an element or one of its images.
+Unsaved edits are drafts: the queue uses the saved selection, shown in the footer.
+Switching selections offers save/discard/keep-editing controls.
+
+Optional inputs:
+
+- `clip`: the same CLIP model object accepted by ComfyUI's **Generate Text**.
+- `text`: system instructions. When both CLIP and nonempty instructions are
+  supplied, this node calls the native `TextGenerate.execute` path. Otherwise it
+  returns the saved prompt verbatim, without generating text.
+
+Instructions and the selected prompt are sent as separate text sections through
+Generate Text's model template, not as a separate system-role API. Reference
+images require a visual model. A single frame is identified as first or last;
+with both frames, the model sees a labeled side-by-side reference. Output images
+keep their original size; EXIF orientation is normalized and transparency is
+composited onto white for RGB IMAGE outputs. Model errors are reported instead of
+silently substituting the original prompt. The advanced section exposes native
+text-generation settings (512-token limit, sampling off, thinking off, native
+template on and MTP auto by default).
+
+Lists, uploaded images and generated results live only in server RAM, separately
+for each graph/node. They survive browser reloads and workflow switches, and are
+cleared when ComfyUI restarts. Workflow files contain only library/revision
+identifiers and generation settings, not list content or uploaded images. Saving
+a copy with the same graph/node identifiers refers to the same session library.
+Editing creates an immutable revision; queued jobs keep their original text and
+frames even after an edit/deletion. Unused revisions are released on subsequent
+library access once submission and queued/running jobs no longer reference them.
+Removing a node does not delete its server library before the session ends.
+
+Restart ComfyUI once after installing this node and reload the browser. No new
+Python dependencies are required. Tests exercise the native Generate Text path
+with a fake CLIP, without loading or downloading model weights.

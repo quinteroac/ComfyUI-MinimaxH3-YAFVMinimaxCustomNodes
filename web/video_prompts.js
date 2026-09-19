@@ -1,0 +1,291 @@
+import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
+
+const stylesheet = document.createElement("link");
+stylesheet.rel = "stylesheet";
+stylesheet.href = new URL("./video_prompts.css", import.meta.url).href;
+document.head.append(stylesheet);
+const panels = new Set();
+const BASE = "/yafv/prompts";
+const settingDefinitions = [
+    ["max_length", "Longitud máxima", "number", 1, 32768, 1],
+    ["sampling_mode", "Muestreo", ["off", "on"]],
+    ["temperature", "Temperatura", "number", .01, 2, .01],
+    ["top_k", "Top K", "number", 0, 1000, 1],
+    ["top_p", "Top P", "number", 0, 1, .01],
+    ["min_p", "Min P", "number", 0, 1, .01],
+    ["repetition_penalty", "Penalización de repetición", "number", 0, 5, .01],
+    ["presence_penalty", "Penalización de presencia", "number", 0, 5, .01],
+    ["seed", "Semilla", "number", 0, Number.MAX_SAFE_INTEGER, 1],
+    ["thinking", "Thinking", "checkbox"],
+    ["use_default_template", "Plantilla nativa", "checkbox"],
+    ["mtp", "MTP", ["auto", "off", "2", "3", "4", "5"]],
+];
+
+async function request(path, options) {
+    const response = await api.fetchApi(BASE + path, options);
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}`);
+    }
+    return response;
+}
+const post = data => ({method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+
+class PromptPanel {
+    constructor(node) {
+        this.node = node; this.collection = null; this.entries = []; this.current = null;
+        this.dirty = false; this.drafting = false; this.busy = false; this.disposed = false; this.hydrated = false;
+        this.files = {}; this.imageActions = {}; this.urls = {};
+        this.root = document.createElement("div"); this.root.className = "yafv-prompts";
+        this.root.innerHTML = `
+          <header><strong>Prompts para video</strong><span class="badge">Sesión de ComfyUI</span></header>
+          <div class="unsaved" hidden><p>Hay cambios sin guardar. ¿Qué deseas hacer antes de continuar?</p><div class="actions"><button data-action="saveContinue" class="primary">Guardar y continuar</button><button data-action="discard">Descartar</button><button data-action="stay">Seguir editando</button></div></div>
+          <div class="body"><aside><div class="actions"><b>Mis prompts</b><span class="count muted">0</span><button data-action="new">+ Nuevo</button></div><div class="entries"></div></aside>
+          <section class="form"><div class="frames"></div>
+            <label>Prompt del elemento</label><textarea class="prompt" placeholder="Describe la escena, el movimiento o la acción…" aria-label="Prompt del elemento"></textarea>
+            <div class="actions"><button class="primary" data-action="save">Agregar</button><button class="danger" data-action="delete">Eliminar elemento</button><span class="draft muted"></span></div>
+            <details open><summary>Último prompt de salida</summary><textarea class="generated" readonly placeholder="El resultado aparecerá después de ejecutar el workflow." aria-label="Último prompt de salida"></textarea></details>
+          </section></div>
+          <details class="advanced"><summary>Opciones de Generate Text</summary><div class="settings"></div><p class="muted">Se utilizan las capacidades del modelo conectado. Los frames requieren soporte visual. Las instrucciones se incluyen en el texto enviado al modelo.</p></details>
+          <footer><span class="selection"></span><span class="status" role="status">Cargando lista…</span><button data-action="refresh">Actualizar</button></footer>`;
+        this.$ = selector => this.root.querySelector(selector);
+        this.root.addEventListener("pointerdown", event => event.stopPropagation());
+        this.root.addEventListener("wheel", event => event.stopPropagation());
+        this.root.addEventListener("keydown", event => event.stopPropagation());
+        this.root.addEventListener("click", event => {
+            const button = event.target.closest("[data-action]");
+            if (button) this.run(() => this.action(button.dataset.action, button.dataset.id));
+        });
+        this.$(".prompt").oninput = () => this.markDirty();
+        for (const frame of ["first", "last"]) this.frameControl(frame);
+        for (const definition of settingDefinitions) this.settingControl(definition);
+        for (const widget of node.widgets ?? []) {
+            widget.type = "hidden";
+            widget.computeSize = () => [0, -4];
+        }
+        this.widget = node.addDOMWidget("video_prompt_panel", "yafv_video_prompts", this.root, {
+            serialize: false, getMinHeight: () => 580,
+        });
+        this.widget.serialize = false;
+        this.resizeObserver = new ResizeObserver(() => {
+            const scale = Math.max(.85, Math.min(1.7, Math.sqrt(this.root.clientWidth * this.root.clientHeight / (1000 * 760))));
+            this.root.style.setProperty("--unit", `${scale.toFixed(2)}px`);
+        });
+        this.resizeObserver.observe(this.root);
+        this.onExecuted = ({detail}) => {
+            const output = detail.output?.yafv_prompt?.[0];
+            if (output?.collection !== this.collection) return;
+            if (output.revision === this.current?.revision) {
+                this.$(".generated").value = output.text;
+                this.message("Prompt generado. Las salidas están listas.");
+            }
+            this.refresh();
+        };
+        api.addEventListener("executed", this.onExecuted);
+        this.timer = setInterval(() => this.refresh(), 3000);
+        node.setSize([1020, 840]);
+        panels.add(this); this.controls();
+        queueMicrotask(() => this.activate());
+    }
+    value(name, value) {
+        const widget = this.node.widgets.find(w => w.name === name);
+        if (!widget) return undefined;
+        if (arguments.length === 2 && widget.value !== value) {
+            widget.value = value; widget.callback?.(value);
+            this.node.setDirtyCanvas?.(true, true);
+        }
+        return widget.value;
+    }
+    message(text, error = false) { this.$(".status").textContent = text; this.$(".status").classList.toggle("error", error); }
+    async run(action) {
+        if (this.busy || this.disposed) return;
+        this.busy = true; this.controls();
+        try { await action(); }
+        catch (error) { if (!this.disposed) this.message(error.message, true); }
+        finally { this.busy = false; if (!this.disposed) this.controls(); }
+    }
+    controls() {
+        for (const button of this.root.querySelectorAll("button")) button.disabled = this.busy || !this.hydrated;
+        this.$('[data-action="refresh"]').disabled = this.busy;
+        this.$('[data-action="save"]').textContent = this.current ? "Guardar cambios" : "Agregar";
+        this.$('[data-action="save"]').disabled ||= !this.$(".prompt").value.trim();
+        this.$('[data-action="delete"]').disabled ||= !this.current;
+        this.$(".prompt").disabled = this.busy || !this.hydrated;
+        const selected = this.entries.find(e => e.revision === this.value("revision_id"));
+        this.$(".selection").textContent = selected ? `Ejecutará: ${selected.prompt.slice(0, 65)}` : "Sin elemento seleccionado";
+        this.$(".draft").textContent = this.dirty ? "Cambios sin guardar: la queue usa el elemento guardado." : "";
+        this.mode();
+    }
+    mode() {
+        const connected = name => this.node.inputs?.find(input => input.name === name)?.link != null;
+        this.$(".badge").textContent = connected("clip") && connected("text") ? "CLIP + instrucciones · generación si text no está vacío" : "Texto original";
+    }
+    async activate() {
+        if (this.disposed || !this.node.graph || this.node.id == null || this.node.id === -1) return;
+        const key = JSON.stringify([this.node.graph.id, this.node.id]);
+        if (this.collection === key && this.hydrated) return;
+        this.collection = key; this.value("collection_id", key); this.value("revision_id", "");
+        this.settingsFromWidgets(); await this.refresh(true);
+    }
+    async refresh(force = false) {
+        if (this.disposed || !this.collection || this.loading || (this.busy && !force)) return;
+        const key = this.collection; this.loading = true;
+        try {
+            const data = await (await request(`/library?${new URLSearchParams({collection: key})}`)).json();
+            if (this.disposed || key !== this.collection) return;
+            const restarted = this.epoch && this.epoch !== data.epoch;
+            this.apply(data, force || !this.hydrated || restarted);
+            if (restarted) this.message("ComfyUI se reinició: la lista temporal está vacía.");
+        } catch (error) { if (!this.disposed) this.message(`No se pudo leer la lista: ${error.message}`, true); }
+        finally { this.loading = false; if (!this.disposed) this.controls(); }
+    }
+    apply(data, replaceForm) {
+        this.epoch = data.epoch; this.entries = data.entries; this.hydrated = true;
+        const selected = this.entries.find(entry => entry.id === data.selected) ?? null;
+        this.value("revision_id", selected?.revision ?? "");
+        if (replaceForm || (!this.dirty && !this.drafting && this.current?.revision !== selected?.revision)) this.show(selected);
+        else if (selected && this.current?.revision === selected.revision) this.$(".generated").value = selected.generated;
+        this.renderList(); this.controls();
+    }
+    renderList() {
+        const list = this.$(".entries"); list.replaceChildren(); this.$(".count").textContent = this.entries.length;
+        for (const entry of this.entries) {
+            const row = document.createElement("div"); row.className = "entry";
+            row.classList.toggle("selected", entry.revision === this.value("revision_id"));
+            const choose = document.createElement("button"); choose.className = "choose"; choose.dataset.action = "select"; choose.dataset.id = entry.id;
+            const title = document.createElement("span"); title.className = "title"; title.textContent = entry.prompt;
+            const frames = document.createElement("small"); frames.textContent = `${entry.first ? "● Inicio" : "○ Inicio"} · ${entry.last ? "● Final" : "○ Final"}`;
+            choose.append(title, frames);
+            const remove = document.createElement("button"); remove.className = "remove danger"; remove.textContent = "×";
+            remove.title = "Eliminar elemento"; remove.setAttribute("aria-label", "Eliminar elemento"); remove.dataset.action = "delete"; remove.dataset.id = entry.id;
+            row.append(choose, remove); list.append(row);
+        }
+        if (!this.entries.length) { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "Agrega un prompt y, si quieres, sus frames inicial y final. La lista dura hasta reiniciar ComfyUI."; list.append(empty); }
+    }
+    markDirty() { this.dirty = true; this.controls(); }
+    releaseURLs() {
+        for (const url of Object.values(this.urls)) URL.revokeObjectURL(url);
+        this.urls = {};
+    }
+    show(entry) {
+        this.releaseURLs(); this.files = {}; this.imageActions = {}; this.current = entry; this.dirty = false; this.drafting = false;
+        this.$(".prompt").value = entry?.prompt ?? "";
+        this.$(".generated").value = entry?.generated ?? "";
+        for (const frame of ["first", "last"]) this.preview(frame);
+        this.message(entry ? "Elemento seleccionado. Ejecuta el workflow desde la queue de ComfyUI." : "Escribe un prompt y pulsa Agregar.");
+        this.controls();
+    }
+    preview(frame) {
+        const image = this.$(`.${frame} img`), hasSaved = this.current?.[frame] && this.imageActions[frame] !== "remove";
+        const url = this.urls[frame] || (hasSaved ? api.apiURL(`${BASE}/image/${this.current.revision}/${frame}?${new URLSearchParams({collection: this.collection})}`) : null);
+        image.hidden = !url;
+        if (url) image.src = url; else image.removeAttribute("src");
+    }
+    frameControl(frame) {
+        const section = document.createElement("div"); section.className = `frame ${frame}`;
+        section.innerHTML = `<b>${frame === "first" ? "First frame · Inicio" : "Last frame · Final"}</b><div class="drop-zone" role="button" tabindex="0" aria-label="Cargar ${frame} frame"><span>Arrastra una imagen<br>o pulsa para cargar</span><img hidden alt="${frame} frame"></div><input type="file" accept="image/*" hidden><button data-action="removeImage" data-id="${frame}">Quitar imagen</button>`;
+        const input = section.querySelector("input"), drop = section.querySelector(".drop-zone");
+        const setFile = file => {
+            if (!file || this.busy || !this.hydrated) return;
+            if (file.type && !file.type.startsWith("image/")) return this.message("Selecciona un archivo de imagen.", true);
+            if (this.urls[frame]) URL.revokeObjectURL(this.urls[frame]);
+            this.files[frame] = file; this.imageActions[frame] = "upload"; this.urls[frame] = URL.createObjectURL(file);
+            this.preview(frame); this.markDirty();
+        };
+        drop.onclick = () => { if (!this.busy && this.hydrated) input.click(); };
+        drop.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); drop.click(); } };
+        input.onchange = () => { setFile(input.files[0]); input.value = ""; };
+        drop.ondragover = event => { event.preventDefault(); event.stopPropagation(); drop.classList.add("drag"); };
+        drop.ondragleave = () => drop.classList.remove("drag");
+        drop.ondrop = event => { event.preventDefault(); event.stopPropagation(); drop.classList.remove("drag"); setFile(event.dataTransfer.files[0]); };
+        this.$(".frames").append(section);
+    }
+    settingControl([name, title, type, min, max, step]) {
+        const label = document.createElement("label"); label.textContent = title;
+        const control = document.createElement(Array.isArray(type) ? "select" : "input"); control.dataset.setting = name;
+        if (Array.isArray(type)) for (const value of type) { const option = document.createElement("option"); option.value = value; option.textContent = value; control.append(option); }
+        else { control.type = type; if (type === "number") { control.min = min; control.max = max; control.step = step; } }
+        control.onchange = () => {
+            if (!control.reportValidity()) { this.settingsFromWidgets(); return; }
+            this.value(name, control.type === "checkbox" ? control.checked : control.type === "number" ? Number(control.value) : control.value);
+        };
+        label.append(control); this.$(".settings").append(label);
+    }
+    settingsFromWidgets() {
+        for (const control of this.root.querySelectorAll("[data-setting]")) {
+            const value = this.value(control.dataset.setting);
+            if (control.type === "checkbox") control.checked = !!value;
+            else control.value = value;
+        }
+    }
+    async guard(action) {
+        if (!this.dirty) return action();
+        this.pendingAction = action; this.$(".unsaved").hidden = false;
+    }
+    async save() {
+        const form = new FormData(); form.set("collection", this.collection); form.set("prompt", this.$(".prompt").value);
+        if (this.current) { form.set("entry", this.current.id); form.set("base", this.current.revision); }
+        for (const frame of ["first", "last"]) {
+            form.set(`${frame}_action`, this.imageActions[frame] || "keep");
+            if (this.files[frame]) form.set(frame, this.files[frame]);
+        }
+        const data = await (await request("/entry", {method: "POST", body: form})).json();
+        if (!this.disposed) { this.apply(data, true); this.message("Elemento guardado en la sesión de ComfyUI."); }
+    }
+    async action(action, id) {
+        switch (action) {
+            case "save": await this.save(); break;
+            case "new": await this.guard(() => { this.show(null); this.drafting = true; this.message("Nuevo borrador. La queue seguirá usando la selección guardada hasta que pulses Agregar."); }); break;
+            case "select": await this.guard(async () => {
+                const data = await (await request("/select", post({collection: this.collection, entry: id}))).json();
+                if (!this.disposed) this.apply(data, true);
+            }); break;
+            case "delete": {
+                const entry = id || this.current?.id; if (!entry) return;
+                await this.guard(async () => {
+                    const data = await (await request(`/entry/${entry}?${new URLSearchParams({collection: this.collection})}`, {method: "DELETE"})).json();
+                    if (!this.disposed) this.apply(data, true);
+                }); break;
+            }
+            case "removeImage":
+                if (this.urls[id]) { URL.revokeObjectURL(this.urls[id]); delete this.urls[id]; }
+                delete this.files[id]; this.imageActions[id] = "remove"; this.preview(id); this.markDirty(); break;
+            case "refresh": await this.guard(() => this.refresh(true)); break;
+            case "stay": this.pendingAction = null; this.$(".unsaved").hidden = true; break;
+            case "saveContinue": case "discard": {
+                if (action === "saveContinue") await this.save();
+                const pending = this.pendingAction; this.pendingAction = null; this.$(".unsaved").hidden = true;
+                this.dirty = false; await pending?.(); break;
+            }
+        }
+    }
+    dispose() {
+        this.disposed = true; clearInterval(this.timer); this.resizeObserver.disconnect(); this.releaseURLs();
+        api.removeEventListener("executed", this.onExecuted); panels.delete(this);
+    }
+}
+
+app.registerExtension({
+    name: "YAFV.VideoPrompts",
+    afterConfigureGraph() { for (const panel of panels) panel.activate(); },
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData.name !== "YAFVVideoPrompts") return;
+        const created = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function (...args) {
+            const result = created?.apply(this, args); this.videoPrompts = new PromptPanel(this); return result;
+        };
+        for (const name of ["onAdded", "onConfigure"]) {
+            const original = nodeType.prototype[name];
+            nodeType.prototype[name] = function (...args) {
+                const result = original?.apply(this, args); queueMicrotask(() => this.videoPrompts?.activate()); return result;
+            };
+        }
+        const connected = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function (...args) {
+            const result = connected?.apply(this, args); this.videoPrompts?.mode(); return result;
+        };
+        const removed = nodeType.prototype.onRemoved;
+        nodeType.prototype.onRemoved = function (...args) { this.videoPrompts?.dispose(); return removed?.apply(this, args); };
+    },
+});
