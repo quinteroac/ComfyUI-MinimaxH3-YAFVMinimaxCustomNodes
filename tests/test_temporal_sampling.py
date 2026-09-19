@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from test_two_pass import sampling
 import torch
@@ -99,127 +99,137 @@ class SamplingTests(unittest.TestCase):
     def setUp(self):
         self.video = torch.linspace(0, 1, 24 * 107 * 4).reshape(1, 24, 107, 2, 2)
         self.audio = torch.arange(32 * 2 * 603, dtype=torch.float32).reshape(1, 32, 2, 603)
-        self.latent = {"samples": NestedTensor((self.video, self.audio)), "batch_index": [0], "custom_metadata": "keep"}
+        self.latent = {"samples": NestedTensor((self.video, self.audio)), "custom_metadata": "keep"}
+        self.model = Mock()
 
-    def run_sample(self, sampler, add_noise=True, **kwargs):
-        with patch.object(temporal.comfy.sample, "sample", side_effect=sampler):
-            return temporal.sample_temporal(object(), 123, 8, 1, "lcm", "simple", [], [],
-                                            self.latent, 4, add_noise, 73, 22, **kwargs)
-
-    def test_bounded_windows_shared_noise_audio_and_metadata(self):
-        calls = []
-        stages = []
-        def sampler(*args, **kwargs):
-            calls.append((args, kwargs))
-            return args[8]
-        output = self.run_sample(sampler, chunk_callback=lambda *data: stages.append(data))
-        self.assertEqual(output["samples"].unbind()[0].shape, self.video.shape)
-        torch.testing.assert_close(output["samples"].unbind()[0], self.video, rtol=0, atol=0)
+    def test_one_solver_run_with_full_state_and_frozen_audio(self):
+        with patch.object(temporal.comfy.sample, "sample", return_value=self.latent["samples"]) as sampler:
+            output = temporal.sample_temporal(
+                self.model, 123, 8, 2, "er_sde", "simple", [], [],
+                self.latent, 4, True, 56, 22,
+            )
+        sampler.assert_called_once()
+        args, kwargs = sampler.call_args
+        self.assertIs(args[0], self.model.clone.return_value)
+        self.assertEqual(args[4], "er_sde")
+        torch.testing.assert_close(args[8].unbind()[0], self.video)
+        video_mask, audio_mask = kwargs["noise_mask"].unbind()
+        self.assertTrue(video_mask.all())
+        self.assertFalse(audio_mask.any())
+        self.assertEqual(kwargs["start_step"], 4)
+        self.assertEqual(kwargs["last_step"], 8)
+        self.assertTrue(kwargs["force_full_denoise"])
+        self.model.add_wrapper_with_key.assert_not_called()
+        wrapper = self.model.clone.return_value.add_wrapper_with_key.call_args.args[2]
+        self.assertEqual(len(wrapper.windows), 10)
         torch.testing.assert_close(output["samples"].unbind()[1], self.audio, rtol=0, atol=0)
         self.assertEqual(output["custom_metadata"], "keep")
-        plan = temporal.temporal_windows(107, 73, 22, exact_tail=True)
-        self.assertEqual(len(calls), len(plan))
-        self.assertEqual(stages[0], (1, len(plan), 0, 73))
-        self.assertEqual(stages[-1][1], len(plan))
-        for (args, kwargs), (start, stop) in zip(calls, plan):
-            video, audio = args[8].unbind()
-            self.assertEqual(video.shape[2], stop - start)
-            self.assertEqual(video.device.type, "cpu")
-            a0 = round(temporal.frame_boundary(start) * temporal.FRAME_RESCALE)
-            source_audio = self.audio[..., a0:a0 + audio.shape[-1]]
-            torch.testing.assert_close(audio, source_audio)
-            self.assertEqual(torch.count_nonzero(kwargs["noise_mask"].unbind()[1]), 0)
-            self.assertEqual(kwargs["start_step"], 4)
-            self.assertEqual(kwargs["last_step"], 8)
-            self.assertTrue(kwargs["force_full_denoise"])
 
-    def test_noise_disabled_refines_whole_windows(self):
-        mask = torch.ones(1, 1, 107, 2, 2)
-        mask[:, :, 20:40] = 0
-        self.latent["noise_mask"] = NestedTensor((mask, torch.ones_like(self.audio)))
-        masks = []
-        def sampler(*args, **kwargs):
-            self.assertTrue(kwargs["disable_noise"])
-            self.assertEqual(torch.count_nonzero(args[1].unbind()[0]), 0)
-            masks.append(kwargs["noise_mask"].unbind()[0])
-            return args[8]
-        result = self.run_sample(sampler, add_noise=False)
-        self.assertTrue(masks[1].all())
-        self.assertIs(result["noise_mask"], self.latent["noise_mask"])
-        self.assertEqual(result["samples"].unbind()[0].shape, self.video.shape)
-        torch.testing.assert_close(result["samples"].unbind()[0], self.video, rtol=0, atol=0)
+    def test_no_noise_and_single_window(self):
+        latent = {"samples": NestedTensor((self.video[:, :, :7], self.audio[..., :37]))}
+        with patch.object(temporal.comfy.sample, "sample", return_value=latent["samples"]) as sampler:
+            output = temporal.sample_temporal(
+                self.model, 123, 8, 1, "lcm", "simple", [], [], latent, 4, False, 56, 22,
+            )
+        self.model.clone.return_value.add_wrapper_with_key.assert_not_called()
+        self.assertFalse(sampler.call_args.args[1].unbind()[0].any())
+        self.assertTrue(sampler.call_args.kwargs["disable_noise"])
+        torch.testing.assert_close(output["samples"].unbind()[0], latent["samples"].unbind()[0])
 
-    def test_56_22_uses_original_source_and_shared_noise(self):
+    def test_conditioning_cache_is_released_on_sampler_failure(self):
+        def fail(*args, **kwargs):
+            wrapper = self.model.clone.return_value.add_wrapper_with_key.call_args.args[2]
+            wrapper.conditionings["test"] = torch.ones(1)
+            raise RuntimeError("sampling failed")
+        with patch.object(temporal.comfy.sample, "sample", side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError, "sampling failed"):
+                temporal.sample_temporal(
+                    self.model, 123, 8, 1, "lcm", "simple", [], [], self.latent, 4, True, 56, 22,
+                )
+        wrapper = self.model.clone.return_value.add_wrapper_with_key.call_args.args[2]
+        self.assertFalse(wrapper.conditionings)
+
+    def test_shared_state_at_every_evaluation_and_no_window_feedback(self):
         windows = temporal.temporal_windows(107, 56, 22, exact_tail=True)
-        calls = []
-        def sampler(*args, **kwargs):
-            index = len(calls)
-            start, stop = windows[index]
-            video, audio = args[8].unbind()
-            noise = args[1].unbind()[0]
-            mask = kwargs["noise_mask"].unbind()[0]
-            overlap = 7 if index else 0
-            expected = self.video[:, :, start:stop].clone()
-            torch.testing.assert_close(video, expected)
-            self.assertTrue(mask.all())
-            if index:
-                torch.testing.assert_close(noise[:, :, :overlap], calls[-1][:, :, -overlap:], rtol=0, atol=0)
-            calls.append(noise)
-            return NestedTensor((video + 10 * mask, audio))
-        with patch.object(temporal.comfy.sample, "sample", side_effect=sampler):
-            output = temporal.sample_temporal(object(), 123, 8, 1, "lcm", "simple", [], [],
-                                              self.latent, 4, True, 56, 22)
-        self.assertEqual(len(calls), 10)
-        torch.testing.assert_close(output["samples"].unbind()[0], self.video + 10)
-        torch.testing.assert_close(output["samples"].unbind()[1], self.audio, rtol=0, atol=0)
+        stages = []
+        wrapper = temporal.TemporalDenoising(
+            [self.video.shape, self.audio.shape], windows, 123, lambda *args: stages.append(args),
+        )
+        state, shapes = temporal.comfy.utils.pack_latents((self.video, self.audio))
+        conds = [[], None]
+        for step in range(3):
+            calls = []
+            current_video, current_audio = temporal.comfy.utils.unpack_latents(state, shapes)
+            def executor(model, local_conds, window, sigma, options):
+                index = len(calls)
+                start, stop = windows[index]
+                a0 = round(temporal.frame_boundary(start) * temporal.FRAME_RESCALE)
+                a1 = round(temporal.frame_boundary(stop) * temporal.FRAME_RESCALE)
+                local_shapes = [(1, 24, stop - start, 2, 2), (1, 32, 2, a1 - a0)]
+                video, audio = temporal.comfy.utils.unpack_latents(window, local_shapes)
+                torch.testing.assert_close(video, current_video[:, :, start:stop], rtol=0, atol=0)
+                torch.testing.assert_close(audio, current_audio[..., a0:a1], rtol=0, atol=0)
+                self.assertEqual(float(sigma), 1.0 / (step + 1))
+                self.assertIsNone(local_conds[1])
+                calls.append(True)
+                prediction, _ = temporal.comfy.utils.pack_latents((video + index + 1, audio))
+                return [prediction, torch.zeros_like(prediction)]
+            predicted = wrapper(executor, Mock(), conds, state, torch.tensor(1.0 / (step + 1), dtype=torch.float64), {})
+            self.assertEqual(len(calls), 10)
+            out_video = temporal.comfy.utils.unpack_latents(predicted[0], shapes)[0]
+            # Both windows predict the same positions from identical x at this step.
+            expected = current_video[:, :, 10:17] + 1 + torch.arange(1, 8).reshape(1, 1, 7, 1, 1) / 8
+            torch.testing.assert_close(out_video[:, :, 10:17], expected)
+            state, _ = temporal.comfy.utils.pack_latents((out_video, self.audio))
+        self.assertEqual(len(stages), 30)
+        self.assertEqual(stages[0], (1, 10, 0, 56))
 
-    def test_overlap_blends_predictions_without_feeding_them_back(self):
-        calls = []
-        def sampler(*args, **kwargs):
-            video, audio = args[8].unbind()
-            start = len(calls) * 15
-            torch.testing.assert_close(video, self.video[:, :, start:start + video.shape[2]])
-            calls.append(True)
-            return NestedTensor((torch.full_like(video, float(len(calls))), audio))
-        output = self.run_sample(sampler)["samples"].unbind()[0]
-        expected = torch.arange(1, 8, dtype=torch.float32) / 8 + 1
-        torch.testing.assert_close(output[0, 0, 15:22, 0, 0], expected)
-        self.assertTrue((output[:, :, :15] == 1).all())
-        self.assertTrue((output[:, :, -10:] == len(calls)).all())
-        self.assertTrue((output[:, :, 1:] >= output[:, :, :-1]).all())
+    def test_conditioning_rebuilt_once_per_window_with_local_shapes(self):
+        windows = temporal.temporal_windows(107, 56, 22, exact_tail=True)
+        wrapper = temporal.TemporalDenoising([self.video.shape, self.audio.shape], windows, 123, None)
+        state, _ = temporal.comfy.utils.pack_latents((self.video, self.audio))
+        conds = [[{"model_conds": {}, "minimax_keyframes": [
+            {"resolved_frame_index": 40, "latent": torch.ones(1, 24, 1, 2, 2)},
+        ]}], [{"model_conds": {}}]]
+        model = Mock()
+        model.extra_conds.return_value = {}
+        def executor(model, local_conds, window, sigma, options):
+            return [window, window]
+        for _ in range(2):
+            wrapper(executor, model, conds, state, torch.tensor(0.5), {})
+        self.assertEqual(model.extra_conds.call_count, 2 * len(windows))
+        params = model.extra_conds.call_args_list[2].kwargs
+        self.assertEqual(params["latent_shapes"][0][2], 17)
+        self.assertEqual(params["minimax_keyframes"][0]["resolved_frame_index"], 6)
+        mask_video, mask_audio = temporal.comfy.utils.unpack_latents(params["denoise_mask"], params["latent_shapes"])
+        self.assertTrue(mask_video.all())
+        self.assertFalse(mask_audio.any())
+        self.assertEqual(conds[0][0]["minimax_keyframes"][0]["resolved_frame_index"], 40)
 
-    def test_automatic_sampling_uses_requested_count(self):
-        calls = []
-        def sampler(*args, **kwargs):
-            calls.append(True)
-            return args[8]
-        output = self.run_sample(sampler, chunk_count=3)
-        self.assertEqual(len(calls), 3)
-        torch.testing.assert_close(output["samples"].unbind()[0], self.video, rtol=0, atol=0)
+    def test_large_overlaps_and_short_tail_preserve_identity(self):
+        for frames, overlap in ((56, 39), (73, 56), (22, 5)):
+            windows = temporal.temporal_windows(107, frames, overlap, exact_tail=True)
+            wrapper = temporal.TemporalDenoising([self.video.shape, self.audio.shape], windows, 123, None)
+            state, shapes = temporal.comfy.utils.pack_latents((self.video, self.audio))
+            result = wrapper(lambda model, conds, x, sigma, options: [x], Mock(), [[]], state, torch.tensor(0.5), {})
+            video = temporal.comfy.utils.unpack_latents(result[0], shapes)[0]
+            torch.testing.assert_close(video, self.video)
 
-    def test_cancel_after_first_window(self):
+    def test_cancel_between_windows(self):
+        windows = temporal.temporal_windows(107, 56, 22, exact_tail=True)
+        wrapper = temporal.TemporalDenoising([self.video.shape, self.audio.shape], windows, 123, None)
+        state, _ = temporal.comfy.utils.pack_latents((self.video, self.audio))
         calls = []
-        def sampler(*args, **kwargs):
+        def executor(model, conds, x, sigma, options):
             calls.append(True)
-            return args[8]
+            return [x]
         def interrupt():
             if calls:
                 raise temporal.mm.InterruptProcessingException()
         with patch.object(temporal.mm, "throw_exception_if_processing_interrupted", side_effect=interrupt):
             with self.assertRaises(temporal.mm.InterruptProcessingException):
-                self.run_sample(sampler)
+                wrapper(executor, Mock(), [[]], state, torch.tensor(0.5), {})
         self.assertEqual(len(calls), 1)
-
-    def test_single_window_and_batch(self):
-        self.video = self.video[:, :, :7].repeat(2, 1, 1, 1, 1)
-        self.audio = self.audio[..., :37].repeat(2, 1, 1, 1)
-        self.latent = {"samples": NestedTensor((self.video, self.audio)), "batch_index": [0, 0]}
-        def sampler(*args, **kwargs):
-            torch.testing.assert_close(args[1].unbind()[0][0], args[1].unbind()[0][1])
-            return args[8]
-        result = self.run_sample(sampler)
-        torch.testing.assert_close(result["samples"].unbind()[0], self.video, rtol=0, atol=0)
-        torch.testing.assert_close(result["samples"].unbind()[1], self.audio, rtol=0, atol=0)
 
 
 class AudioRefinementTests(unittest.TestCase):
@@ -249,7 +259,7 @@ class AudioRefinementTests(unittest.TestCase):
 
 
 class NativeSamplerTests(unittest.TestCase):
-    def test_native_lcm_with_small_h3_model(self):
+    def test_native_solvers_keep_global_history_with_small_h3_model(self):
         config = MiniMaxH3({
             "hidden_size": 32, "num_layers": 0, "token_refiner_num_layers": 0,
             "num_attention_heads": 1, "attention_head_dim": 32, "ffn_hidden_size": 64,
@@ -272,14 +282,26 @@ class NativeSamplerTests(unittest.TestCase):
             refined_audio = refined["samples"].unbind()[1]
             self.assertTrue(torch.isfinite(refined_audio).all())
             self.assertFalse(torch.equal(refined_audio, audio))
-            result = temporal.sample_temporal(
-                patcher, 9, 4, 1, "lcm", "simple", cond, cond,
-                refined, 2, True, 22, 5,
-            )
-        out_video, out_audio = result["samples"].unbind()
-        self.assertEqual(out_video.shape, video.shape)
-        self.assertTrue(torch.isfinite(out_video).all())
-        torch.testing.assert_close(out_audio, refined_audio, rtol=0, atol=0)
+            for sampler in ("lcm", "er_sde", "heun"):
+                for cfg in (1, 2):
+                    with self.subTest(sampler=sampler, cfg=cfg):
+                        full = temporal.sample_temporal(
+                            patcher, 9, 5, cfg, sampler, "simple", cond, cond,
+                            refined, 2, True, 39, 5,
+                        )
+                        with patch.object(model, "apply_model", wraps=model.apply_model) as apply:
+                            result = temporal.sample_temporal(
+                                patcher, 9, 5, cfg, sampler, "simple", cond, cond,
+                                refined, 2, True, 22, 5,
+                            )
+                        out_video, out_audio = result["samples"].unbind()
+                        self.assertTrue(torch.isfinite(out_video).all())
+                        torch.testing.assert_close(out_video, full["samples"].unbind()[0])
+                        torch.testing.assert_close(out_audio, refined_audio, rtol=0, atol=0)
+                        self.assertGreaterEqual(apply.call_count, 6)
+                        for call in apply.call_args_list:
+                            self.assertEqual(call.kwargs["latent_shapes"][0][2], 7)
+                        self.assertFalse(patcher.get_all_wrappers(temporal.WrappersMP.CALC_COND_BATCH))
 
 
 if __name__ == "__main__":

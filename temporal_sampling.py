@@ -8,6 +8,8 @@ import torch.nn.functional as F
 
 import comfy.model_management as mm
 import comfy.sample
+import comfy.samplers
+from comfy.patcher_extension import WrappersMP
 import comfy.utils
 from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
 from comfy.nested_tensor import NestedTensor
@@ -178,6 +180,79 @@ def refine_audio(model, seed, steps, start_step, cfg, sampler_name, scheduler,
     return result
 
 
+class TemporalDenoising:
+    """Combine window predictions before a single, full-video solver update."""
+
+    def __init__(self, shapes, windows, seed, chunk_callback):
+        self.shapes = shapes
+        self.windows = windows
+        self.seed = seed
+        self.chunk_callback = chunk_callback
+        self.conditionings = {}
+
+    def __call__(self, executor, model, conds, x, timestep, model_options):
+        video, audio = comfy.utils.unpack_latents(x, self.shapes)
+        predictions = [torch.zeros_like(video) for _ in conds]
+        total_weight = torch.zeros((1, 1, video.shape[2], 1, 1), device=x.device, dtype=x.dtype)
+        key = tuple(id(cond) for cond in conds)
+        if key not in self.conditionings:
+            # Retain the source lists too, so their identities cannot be reused.
+            self.conditionings[key] = (tuple(conds), {})
+        local_cache = self.conditionings[key][1]
+
+        for index, (start, stop) in enumerate(self.windows):
+            mm.throw_exception_if_processing_interrupted()
+            f0, f1 = frame_boundary(start), frame_boundary(stop)
+            a0 = min(audio.shape[-1], round(f0 * FRAME_RESCALE))
+            a1 = min(audio.shape[-1], round(f1 * FRAME_RESCALE))
+            if a1 <= a0:
+                raise ValueError("The H3 audio latent is too short for this video window.")
+            if self.chunk_callback is not None:
+                self.chunk_callback(index + 1, len(self.windows), f0, f1)
+            window, shapes = comfy.utils.pack_latents((
+                video[:, :, start:stop], audio[..., a0:a1],
+            ))
+            if index not in local_cache:
+                mask, _ = comfy.utils.pack_latents((
+                    torch.ones(shapes[0], device=x.device, dtype=x.dtype),
+                    torch.zeros(shapes[1], device=x.device, dtype=x.dtype),
+                ))
+                local_conds = []
+                for group_index, group in enumerate(conds):
+                    if group is None:
+                        local_conds.append(None)
+                        continue
+                    cropped = window_conditioning(
+                        [[None, item] for item in group], f0, f1, video.shape[-2], video.shape[-1],
+                    )
+                    local_conds.append(comfy.samplers.encode_model_conds(
+                        model.extra_conds, [item for _, item in cropped], window, x.device,
+                        "positive" if group_index == 0 else "negative",
+                        denoise_mask=mask, latent_shapes=shapes, seed=self.seed,
+                    ))
+                local_cache[index] = local_conds
+
+            outputs = executor(model, local_cache[index], window, timestep, model_options)
+            weight = torch.ones(stop - start, device=x.device, dtype=x.dtype)
+            if index:
+                overlap = self.windows[index - 1][1] - start
+                weight[:overlap] = torch.arange(1, overlap + 1, device=x.device, dtype=x.dtype) / (overlap + 1)
+            if index + 1 < len(self.windows):
+                overlap = stop - self.windows[index + 1][0]
+                fade = torch.arange(overlap, 0, -1, device=x.device, dtype=x.dtype) / (overlap + 1)
+                weight[-overlap:] = torch.minimum(weight[-overlap:], fade)
+            weight = weight.reshape(1, 1, -1, 1, 1)
+            for prediction, output in zip(predictions, outputs):
+                local_video = comfy.utils.unpack_latents(output, shapes)[0]
+                prediction[:, :, start:stop].addcmul_(local_video, weight)
+            total_weight[:, :, start:stop] += weight
+            mm.throw_exception_if_processing_interrupted()
+
+        # Audio is frozen by the outer sampler's mask and returned unchanged.
+        return [comfy.utils.pack_latents((prediction.div_(total_weight), torch.zeros_like(audio)))[0]
+                for prediction in predictions]
+
+
 def sample_temporal(model, seed, steps, cfg, sampler_name, scheduler, positive,
                     negative, latent, start_step, add_noise, chunk_frames,
                     overlap_frames, chunk_count=None, chunk_callback=None):
@@ -200,65 +275,37 @@ def sample_temporal(model, seed, steps, cfg, sampler_name, scheduler, positive,
     mm.throw_exception_if_processing_interrupted()
     noise = (comfy.sample.prepare_noise(source, seed, latent.get("batch_index")) if add_noise
              else comfy.sample.prepare_empty_noise(source))
-    noise_video, noise_audio = noise.unbind()
-    # Every window starts from Pass 1 with the same noise at shared positions.
-    # Feeding a finished window back into the next one propagates its artifacts.
-    accumulated = torch.zeros_like(video, dtype=torch.float32)
-    total_weight = torch.zeros((1, 1, video.shape[2], 1, 1), dtype=torch.float32)
-    steps_per_chunk = steps - start_step
-    progress = comfy.utils.ProgressBar(steps_per_chunk * len(windows))
+    patched_model = model.clone()
+    temporal_denoising = None
+    if len(windows) > 1:
+        temporal_denoising = TemporalDenoising([video.shape, audio.shape], windows, seed, chunk_callback)
+        patched_model.add_wrapper_with_key(
+            WrappersMP.CALC_COND_BATCH, "yafv_h3_temporal",
+            temporal_denoising,
+        )
+    elif chunk_callback is not None:
+        chunk_callback(1, 1, 0, frame_boundary(video.shape[2]))
+    mask = NestedTensor((
+        torch.ones((1, 1, video.shape[2], 1, 1), dtype=torch.float32),
+        torch.zeros((1, 1, 2, audio.shape[-1]), dtype=torch.float32),
+    ))
+    progress = comfy.utils.ProgressBar(steps - start_step)
 
-    for index, (start, stop) in enumerate(windows):
+    def callback(step, x0, x, total_steps):
         mm.throw_exception_if_processing_interrupted()
-        f0, f1 = frame_boundary(start), frame_boundary(stop)
-        a0 = min(audio.shape[-1], round(f0 * FRAME_RESCALE))
-        a1 = min(audio.shape[-1], round(f1 * FRAME_RESCALE))
-        if a1 <= a0:
-            raise ValueError("The H3 audio latent is too short for this video window.")
-        if chunk_callback is not None:
-            chunk_callback(index + 1, len(windows), f0, f1)
-        window_video = video[:, :, start:stop].clone()
-        window_audio = audio[..., a0:a1].clone()
-        window = NestedTensor((window_video, window_audio))
-        window_noise = NestedTensor((
-            noise_video[:, :, start:stop].clone(),
-            noise_audio[..., a0:a1].clone(),
-        ))
-        video_mask = torch.ones((1, 1, window_video.shape[2], 1, 1), dtype=torch.float32)
-        window_mask = NestedTensor((
-            video_mask,
-            torch.zeros((1, 1, 2, window_audio.shape[-1]), dtype=torch.float32),
-        ))
-        cond = window_conditioning(positive, f0, f1, video.shape[-2], video.shape[-1])
-        uncond = window_conditioning(negative, f0, f1, video.shape[-2], video.shape[-1])
+        progress.update_absolute(step + 1)
 
-        def callback(step, x0, x, total_steps):
-            mm.throw_exception_if_processing_interrupted()
-            progress.update_absolute(index * steps_per_chunk + step + 1)
-
+    try:
         sampled = comfy.sample.sample(
-            model, window_noise, steps, cfg, sampler_name, scheduler, cond, uncond,
-            window, disable_noise=not add_noise, start_step=start_step, last_step=steps,
-            force_full_denoise=True, noise_mask=window_mask, callback=callback,
+            patched_model, noise, steps, cfg, sampler_name, scheduler, positive, negative,
+            source, disable_noise=not add_noise, start_step=start_step, last_step=steps,
+            force_full_denoise=True, noise_mask=mask, callback=callback,
             disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED, seed=seed,
         )
-        refined = sampled.unbind()[0].to(device="cpu", dtype=torch.float32)
-        weight = torch.ones(stop - start, dtype=torch.float32)
-        if index:
-            overlap = windows[index - 1][1] - start
-            weight[:overlap] = torch.arange(1, overlap + 1, dtype=torch.float32) / (overlap + 1)
-        if index + 1 < len(windows):
-            overlap = stop - windows[index + 1][0]
-            fade = torch.arange(overlap, 0, -1, dtype=torch.float32) / (overlap + 1)
-            weight[-overlap:] = torch.minimum(weight[-overlap:], fade)
-        weight = weight.reshape(1, 1, -1, 1, 1)
-        accumulated[:, :, start:stop].addcmul_(refined, weight)
-        total_weight[:, :, start:stop] += weight
-        del sampled, refined, window, window_noise, window_mask, cond, uncond
-        mm.soft_empty_cache()
-        mm.throw_exception_if_processing_interrupted()
-
+    finally:
+        if temporal_denoising is not None:
+            temporal_denoising.conditionings.clear()
+    mm.throw_exception_if_processing_interrupted()
     result = dict(latent)
-    assembled_video = accumulated.div_(total_weight).to(dtype=video.dtype)
-    result["samples"] = NestedTensor((assembled_video, audio))
+    result["samples"] = NestedTensor((sampled.unbind()[0].to(device="cpu", dtype=video.dtype), audio))
     return result
