@@ -53,7 +53,9 @@ Only output/temp media referenced by ComfyUI's in-memory `/history` are listed,
 including native previews, VHS `gifs` results and this pack's `h3_preview`.
 Pending/running counts come from the queue. The editor does not scan output
 folders. Deleting history makes dependent clips unavailable. Switching workflows keeps each editor’s clips, drawings and undo history in browser
-memory, keyed by graph and node. Returning to the workflow restores its timeline.
+memory, keyed by an editor session identifier and node. Returning to the workflow
+restores its timeline even when ComfyUI recreates the graph. Only the session
+identifier is stored in the workflow.
 Reloading the page discards these sessions; edits are not saved in the workflow,
 localStorage or a project file. Exports use temporary
 files which are removed after completion/cancellation; original files are intact.

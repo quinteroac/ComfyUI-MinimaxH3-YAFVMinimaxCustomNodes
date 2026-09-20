@@ -8,7 +8,6 @@ document.head.append(sheet);
 const BASE = "/yafv/editor";
 const mime = "application/x-yafv-media";
 const clipMime = "application/x-yafv-clip";
-const editors = new Set();
 const sessions = new Map();
 const sessionFields = ["clips", "undo", "redo", "time", "selected", "zoom", "fps", "width", "height"];
 const toolFields = ["color", "brush", "opacity", "scope", "ink-in", "ink-out", "filter"];
@@ -35,6 +34,7 @@ function download(blob, name) {
 class Editor {
     constructor(node) {
         this.node = node;
+        this.sessionId = uid();
         this.clips = []; this.assets = new Map(); this.metadata = new Map();
         this.undo = []; this.redo = []; this.time = 0; this.selected = null;
         this.zoom = 60; this.fps = 24; this.width = 1280; this.height = 720;
@@ -143,14 +143,12 @@ class Editor {
         });
         this.widget.serialize = false;
         node.setSize([1120, 860]);
-        editors.add(this);
     }
     sessionKey() {
-        return this.node.graph ? JSON.stringify([this.node.graph.id, this.node.id]) : null;
+        return JSON.stringify([this.sessionId, this.node.id]);
     }
     saveSession() {
         const key = this.sessionKey();
-        if (!key) return;
         this.finishStroke();
         const state = Object.fromEntries(sessionFields.map(field => [field, this[field]]));
         state.tools = Object.fromEntries(toolFields.map(field => [field, this.$(`.${field}`).value]));
@@ -527,7 +525,7 @@ class Editor {
         }
     }
     dispose() {
-        this.saveSession(); editors.delete(this);
+        this.saveSession();
         this.disposed = true; clearInterval(this.timer); clearTimeout(this.refreshDelay); cancelAnimationFrame(this.animation);
         this.resizeObserver.disconnect(); this.layoutObserver.disconnect();
         api.removeEventListener("executed", this.onExecuted); api.removeEventListener("yafv-editor-progress", this.onProgress);
@@ -538,17 +536,25 @@ class Editor {
 
 app.registerExtension({
     name: "YAFV.MediaEditor",
-    beforeConfigureGraph() {
-        for (const editor of editors) editor.saveSession();
-    },
-    afterConfigureGraph() {
-        for (const editor of editors) editor.restoreSession();
-    },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== "YAFVMediaEditor") return;
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function (...args) {
             const result = created?.apply(this, args); this.mediaEditor = new Editor(this); return result;
+        };
+        const serialized = nodeType.prototype.onSerialize;
+        nodeType.prototype.onSerialize = function (data) {
+            const result = serialized?.apply(this, arguments);
+            this.mediaEditor.saveSession();
+            data.yafv_editor_session = this.mediaEditor.sessionId;
+            return result;
+        };
+        const configured = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function (data) {
+            const result = configured?.apply(this, arguments);
+            if (data.yafv_editor_session) this.mediaEditor.sessionId = data.yafv_editor_session;
+            this.mediaEditor.restoreSession();
+            return result;
         };
         const removed = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function (...args) { this.mediaEditor?.dispose(); return removed?.apply(this, args); };
