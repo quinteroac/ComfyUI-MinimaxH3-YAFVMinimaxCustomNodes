@@ -1,7 +1,8 @@
 """Temporary prompt libraries and immutable queue revisions for image-to-video."""
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import io
+from pathlib import Path
 import threading
 import uuid
 
@@ -22,6 +23,8 @@ class PromptRevision:
     prompt: str
     first: bytes | None
     last: bytes | None
+    media: dict = field(default_factory=dict)
+    kind: str = "video"
 
 
 class PromptLibrary:
@@ -51,16 +54,17 @@ class PromptLibrary:
                 item = self.revisions[revision]
                 entries.append({"id": entry, "revision": revision, "prompt": item.prompt,
                                 "first": bool(item.first), "last": bool(item.last),
-                                "generated": self.results.get(revision, "")})
+                                "generated": self.results.get(revision, ""),
+                                **{name: bool(path) for name, path in item.media.items()}})
             return {"epoch": self.epoch, "entries": entries, "selected": collection["selected"]}
 
-    def save(self, key, prompt, first, last, entry=None, base=None):
+    def save(self, key, prompt, first, last, entry=None, base=None, *, media=None, kind="video"):
         with self.lock:
             collection = self.collection(key)
             if entry is not None and collection["entries"].get(entry) != base:
                 raise ValueError("El elemento cambió o fue eliminado en otra ventana. Recarga la lista antes de guardarlo.")
             entry = entry or uuid.uuid4().hex
-            item = PromptRevision(uuid.uuid4().hex, key, entry, prompt, first, last)
+            item = PromptRevision(uuid.uuid4().hex, key, entry, prompt, first, last, dict(media or {}), kind)
             self.revisions[item.id] = item
             collection["entries"][entry] = item.id
             collection["selected"] = entry
@@ -89,9 +93,14 @@ class PromptLibrary:
         with self.lock:
             live = {revision for c in self.collections.values() for revision in c["entries"].values()}
             keep = live | queued | set(self.leases)
+            removed_files = set()
             for revision in self.revisions.keys() - keep:
+                removed_files.update(path for path in self.revisions[revision].media.values() if path)
                 del self.revisions[revision]
                 self.results.pop(revision, None)
+            live_files = {path for item in self.revisions.values() for path in item.media.values() if path}
+            for path in removed_files - live_files:
+                Path(path).unlink(missing_ok=True)
 
 
 library = PromptLibrary()
@@ -102,7 +111,7 @@ def prompt_revisions(prompt):
     if not isinstance(prompt, dict):
         return set()
     return {node["inputs"]["revision_id"] for node in prompt.values()
-            if isinstance(node, dict) and node.get("class_type") == "YAFVVideoPrompts"
+            if isinstance(node, dict) and node.get("class_type") in {"YAFVVideoPrompts", "YAFVReferenceVideoPrompts"}
             and isinstance(node.get("inputs", {}).get("revision_id"), str)}
 
 
@@ -241,14 +250,19 @@ class YAFVVideoPrompts:
         except ValueError as error:
             return str(error)
 
+    def prepare(self, item, needs_visual):
+        first, last = load_frame(item.first), load_frame(item.last)
+        reference, description = visual_reference(first, last) if needs_visual else (None, "")
+        return (image_tensor(first), image_tensor(last)), reference, description
+
     def execute(self, collection_id, revision_id, max_length=512, sampling_mode="off", temperature=.7,
                 top_k=64, top_p=.95, min_p=.05, repetition_penalty=1.05, presence_penalty=0, seed=0,
                 thinking=False, use_default_template=True, mtp="auto", clip=None, text=None):
         item = library.revision(collection_id, revision_id)
-        first, last = load_frame(item.first), load_frame(item.last)
+        needs_visual = clip is not None and text is not None and bool(text.strip())
+        media, reference, description = self.prepare(item, needs_visual)
         generated = item.prompt
-        if clip is not None and text is not None and text.strip():
-            reference, description = visual_reference(first, last)
+        if needs_visual:
             prompt = f"INSTRUCTIONS\n{text}\n\nUSER PROMPT\n{item.prompt}"
             if description:
                 prompt += f"\n\nVISUAL REFERENCE\n{description}"
@@ -266,7 +280,7 @@ class YAFVVideoPrompts:
             if revision_id in library.revisions:
                 library.results[revision_id] = generated
         return {"ui": {"yafv_prompt": [{"collection": collection_id, "revision": revision_id, "text": generated}]},
-                "result": (generated, image_tensor(first), image_tensor(last))}
+                "result": (generated, *media)}
 
 
 @routes.get("/yafv/prompts/library")

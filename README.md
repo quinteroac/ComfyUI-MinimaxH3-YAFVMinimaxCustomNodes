@@ -112,3 +112,40 @@ Removing a node does not delete its server library before the session ends.
 Restart ComfyUI once after installing this node and reload the browser. No new
 Python dependencies are required. Tests exercise the native Generate Text path
 with a fake CLIP, without loading or downloading model weights.
+
+## YAFV · Prompts para Reference to Video
+
+Add **YAFV → video → YAFV · Prompts para Reference to Video**. It uses the same
+session-only prompt list, `clip`/`text` inputs and Generate Text settings as
+**Prompts para video**. Each entry can hold up to eight images, two videos with
+independent soundtracks, and three standalone audio files. Use **+ Añadir
+referencia** and choose Imagen, Video or Audio. A card appears only after a file
+is selected; canceling leaves the panel unchanged. Existing cards accept dropped
+replacement files. Each video contains its soundtrack controls. Removing a card
+frees its slot without renumbering other references. Save the entry before queuing.
+
+Connect `generated_prompt` to MiniMax H3 Reference to Video's `prompt`, and the
+reference outputs to its matching optional inputs: `ref_image_0`–`ref_image_7`,
+`ref_video_0`–`ref_video_1`, `ref_video_audio_0`–`ref_video_audio_1`, and
+`ref_audio_0`–`ref_audio_2`. The original eight output positions are preserved;
+new outputs are appended, for 16 total. Output sockets remain available as cards
+are added or removed. Video outputs are IMAGE batches at 24 fps, not VIDEO sockets.
+Images retain their dimensions; video retains its dimensions and duration to the
+nearest frame. H3 performs its own frame-count alignment. Missing references
+return `None`.
+
+Loading/replacing a video extracts its soundtrack automatically. An explicit
+audio upload or removal in the same save takes priority; silent videos have no
+soundtrack output. Removing the video also removes its automatic soundtrack.
+Standalone audio files are not analyzed by the prompt generator. With `clip`
+and nonempty `text`, the generator sees a labeled sheet of the attached images and
+up to eight evenly spaced frames from each video, plus the mapping of present references
+to MiniMax's `<Picture i>`, `<Video k>` and `<Audio j>` tags. Connect outputs to
+the matching slots to preserve this ordering. Without both inputs, the original
+prompt is returned unchanged.
+
+FFmpeg with libx264 is required. Uploaded references live in temporary session
+files, not in the workflow. Editing or deleting an entry preserves any revision
+already submitted to the queue; unreferenced files are removed on subsequent
+library activity. Restarting ComfyUI clears the list. Browser playback depends
+on codec support; generation uses the saved, decoded references.
