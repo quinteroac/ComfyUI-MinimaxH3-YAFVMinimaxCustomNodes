@@ -76,6 +76,28 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(sampler.call_args_list[1].kwargs["start_step"], 4)
         self.assertFalse(sampler.call_args_list[1].kwargs["disable_noise"])
 
+    def test_pass2_removes_keyframes_without_changing_pass1(self):
+        guides = [{"resolved_frame_index": 0, "latent": self.video}]
+        refs = [{"kind": "image", "latent": self.video}]
+        embedding = object()
+        conditioning = [[embedding, {"minimax_keyframes": guides, "minimax_refs": refs}]]
+        for mode in ("full", "temporal"):
+            with self.subTest(mode=mode), \
+                 patch.object(sampling, "common_ksampler", return_value=(self.latent,)) as sampler, \
+                 patch.object(sampling, "sample_temporal", return_value=self.latent) as temporal:
+                sampling.MiniMaxH3TwoPassSampler().sample(**dict(
+                    self.args, positive=conditioning, negative=conditioning,
+                    enable_latent_upscale=False, pass2_sampling_mode=mode,
+                ))
+                self.assertIs(sampler.call_args_list[0].args[6], conditioning)
+                second = temporal.call_args if mode == "temporal" else sampler.call_args_list[1]
+                for cond in second.args[6:8]:
+                    self.assertIs(cond[0][0], embedding)
+                    self.assertNotIn("minimax_keyframes", cond[0][1])
+                    self.assertIs(cond[0][1]["minimax_refs"], refs)
+                self.assertIs(second.args[8], self.latent)
+                self.assertIs(conditioning[0][1]["minimax_keyframes"], guides)
+
     def test_temporal_mode_routes_only_second_pass(self):
         second_model = object()
         with patch.object(sampling, "common_ksampler", return_value=(self.latent,)) as sampler, \

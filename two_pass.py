@@ -14,6 +14,12 @@ from .h3_upscaler import H3Upscaler, model_names
 from .temporal_sampling import refine_audio, sample_temporal, window_sizes
 
 
+def without_keyframes(conditioning):
+    return [[embedding, {key: value for key, value in metadata.items()
+                         if key != "minimax_keyframes"}]
+            for embedding, metadata in conditioning]
+
+
 class MiniMaxH3TwoPassSampler:
     CATEGORY = "MiniMax H3/sampling"
     FUNCTION = "sample"
@@ -196,6 +202,8 @@ class MiniMaxH3TwoPassSampler:
             if enable_pass2:
                 notify("pass2")
                 second_model = model_pass1 if model_pass2 is None else model_pass2
+                positive_pass2 = without_keyframes(positive)
+                negative_pass2 = without_keyframes(negative)
                 if pass2_sampling_mode == "temporal":
                     def chunk_callback(chunk, chunks, frame_start, frame_end):
                         notify("pass2", chunk=chunk, chunks=chunks,
@@ -203,7 +211,7 @@ class MiniMaxH3TwoPassSampler:
 
                     result = sample_temporal(
                         second_model, seed_pass2, total_steps, cfg_pass2, sampler_pass2,
-                        scheduler_pass2, positive, negative, result, split_step,
+                        scheduler_pass2, positive_pass2, negative_pass2, result, split_step,
                         pass2_add_noise,
                         pass2_chunk_frames if pass2_chunking_mode == "manual (frames)" else None,
                         pass2_overlap_frames if pass2_chunking_mode == "manual (frames)" else None,
@@ -213,7 +221,7 @@ class MiniMaxH3TwoPassSampler:
                 else:
                     result = common_ksampler(
                         second_model, seed_pass2, total_steps, cfg_pass2, sampler_pass2, scheduler_pass2,
-                        positive, negative, result, disable_noise=not pass2_add_noise,
+                        positive_pass2, negative_pass2, result, disable_noise=not pass2_add_noise,
                         start_step=split_step, last_step=total_steps, force_full_denoise=True,
                     )[0]
             mm.throw_exception_if_processing_interrupted()
