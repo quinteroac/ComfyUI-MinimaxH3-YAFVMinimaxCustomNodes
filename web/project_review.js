@@ -1,6 +1,11 @@
 import {app} from "/scripts/app.js";
 import {api} from "/scripts/api.js";
 
+const sheet = document.createElement("link");
+sheet.rel = "stylesheet";
+sheet.href = new URL("./minimax.css", import.meta.url).href;
+document.head.append(sheet);
+
 const mounted = new Set();
 let recovering = false;
 function deliver(data) {
@@ -49,8 +54,8 @@ app.registerExtension({
         if (node.comfyClass !== "YAFVProjectReview" || mounted.has(node)) return;
         mounted.add(node);
         const root = document.createElement("section");
-        root.style.cssText = "display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box;min-height:260px;color:#eee;font:12px system-ui,sans-serif";
-        root.innerHTML = `<video controls preload="metadata" style="width:100%;max-height:220px;background:#080b10;object-fit:contain"></video><div style="display:flex;gap:8px"><button data-action="approve">Approve</button><button data-action="reject">Reject</button></div><span role="status">Waiting for a generated candidate…</span>`;
+        root.className = "yafv-review";
+        root.innerHTML = `<header><strong>MiniMax · Project review</strong></header><video controls preload="metadata" style="width:100%;max-height:220px;background:#080b10;object-fit:contain"></video><div style="display:flex;gap:8px"><button data-action="approve">Approve</button><button data-action="reject">Reject</button></div><span role="status">Waiting for a generated candidate…</span>`;
         const video = root.querySelector("video");
         const status = root.querySelector("[role=status]");
         const buttons = [...root.querySelectorAll("button[data-action]")];
@@ -89,7 +94,7 @@ app.registerExtension({
             }
         };
         root.addEventListener("pointerdown", event => event.stopPropagation());
-        node.addDOMWidget("project_review_panel", "yafv_project_review", root, {serialize: false, getMinHeight: () => 280});
+        node.addDOMWidget("project_review_panel", "yafv_project_review", root, {serialize: false, getMinHeight: () => 400});
         node._yafvProjectReview = data => {
             if (current === data.token) return;
             current = data.token;

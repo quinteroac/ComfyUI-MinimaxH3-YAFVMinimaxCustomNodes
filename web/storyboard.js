@@ -80,7 +80,7 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== TYPE) return;
         const created = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function (...args) { const result = created?.apply(this, args); this.color = "#3b3150"; this.bgcolor = "#201a2d"; this.storyboardPanel = createPanel(this); return result; };
+        nodeType.prototype.onNodeCreated = function (...args) { const result = created?.apply(this, args); this.storyboardPanel = createPanel(this); return result; };
         const configured = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function (...args) { const result = configured?.apply(this, args); if (this.storyboardPanel) refresh(this.storyboardPanel, true); return result; };
         const removed = nodeType.prototype.onRemoved;

@@ -1,0 +1,206 @@
+@font-face {
+    font-family: "DM Sans";
+    src: url("./fonts/DM-Sans.ttf") format("truetype");
+    font-weight: 100 1000;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Dark adaptation of the supplied light brand guide.
+   Scoped to the custom DOM panels; native ComfyUI controls keep their theme. */
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) {
+    --mm-canvas: #18181c;
+    --mm-surface: #232329;
+    --mm-hairline: #41414b;
+    --mm-ink: #f4f4f5;
+    --mm-muted: #b0b0bc;
+    --mm-blue: #2455db;
+    --mm-coral: #ec4938;
+    --mm-magenta: #bf237e;
+    --mm-purple: #733bbd;
+    --mm-focus: #91b4ff;
+    --panel: var(--mm-surface);
+    --border: var(--mm-hairline);
+    --muted: var(--mm-muted);
+    --accent: var(--mm-focus);
+    box-sizing: border-box;
+    color-scheme: dark;
+    background: var(--mm-canvas);
+    color: var(--mm-ink);
+    border: 0;
+    border-radius: 0;
+    padding: 8px 10px;
+    font: 12px/1.45 "DM Sans", Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    accent-color: var(--mm-ink);
+    container-type: inline-size;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) * { box-sizing: border-box; }
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) header {
+    padding: 4px 8px;
+    border-radius: 0;
+    border-left: 2px solid var(--mm-blue);
+    background: transparent;
+    color: #fff;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.yafv-storyboard header {
+    border-left-color: var(--mm-coral);
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) header strong {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -.5px;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) header :is(.muted, .eyebrow, .badge) { color: #fff; }
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) .badge {
+    border: 1px solid #ffffff80;
+    border-radius: 9999px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(button, input, select, textarea) {
+    background: var(--mm-canvas);
+    color: var(--mm-ink);
+    border: 1px solid var(--mm-hairline);
+    border-radius: 8px;
+    font: inherit;
+    padding: 5px 8px;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) button {
+    border-radius: 9999px;
+    min-height: 28px;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1.4;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(button.primary, button.active, button[aria-selected="true"], button[aria-pressed="true"], button[data-action="export"], button[data-action="approve"]) {
+    background: #f4f4f5;
+    color: #18181c;
+    border-color: #f4f4f5;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) button:active:not(:disabled) { background: #d4d4d8; color: #18181c; }
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) button:disabled {
+    background: #303037;
+    color: #9999a5;
+    border-color: #303037;
+    opacity: 1;
+    cursor: default;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--mm-focus);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(.muted, .intro, .summary, figcaption, .empty, .status) { color: var(--mm-muted); }
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(.error, button.danger, button.stop) { color: #ffaaaa; }
+:is(.yafv-storyboard, .yafv-prompts, .yafv-editor) :is(aside, .scene-card, .frame, .media-add) {
+    background: var(--mm-canvas);
+    border: 1px solid var(--mm-hairline);
+    border-radius: 12px;
+}
+.yafv-storyboard :is(.field > span, .section-title span, .scene-card > span) { color: var(--mm-ink); font-weight: 600; }
+.yafv-storyboard :is(.section-title small, .scene-card small, .toolbar label) { color: var(--mm-muted); }
+.yafv-prompts :is(.prompt, .generated), .yafv-storyboard .preview { background: var(--mm-surface); border-color: var(--mm-hairline); }
+.yafv-prompts .entry.selected { background: var(--mm-surface); border-color: var(--mm-ink); }
+.yafv-prompts :is(.context-note, .drag) { background: #222e46; }
+.yafv-prompts :is(summary, .selection) { color: var(--mm-ink); }
+.yafv-prompts .unsaved { background: #382f20; border-color: #947a44; }
+.yafv-prompts .tile-actions { opacity: 1; }
+.yafv-prompts .tile-actions button { background: var(--mm-surface); color: var(--mm-ink); }
+.yafv-prompts .tile-play { background: #000b; color: #fff; border-radius: 9999px; }
+.yafv-prompts .tile-empty { color: #d4d4d8; }
+.yafv-prompts .audio-icon { color: #fff; }
+.yafv-prompts .media-tile:has(.audio-icon) { background: linear-gradient(135deg, var(--mm-magenta), var(--mm-purple)); }
+.yafv-prompts dialog {
+    color: var(--mm-ink);
+    background: var(--mm-canvas);
+    border-radius: 12px;
+    font: 12px/1.45 "DM Sans", Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    box-shadow: 0 12px 16px -4px #0006;
+}
+.yafv-editor .timeline-scroll { background: var(--mm-surface); }
+.yafv-editor .clip { background: #28344e; border-color: #667696; color: var(--mm-ink); }
+.yafv-editor .clip.image { background: #373044; border-color: #847295; }
+.yafv-editor .clip.selected { outline-color: var(--mm-focus); }
+.yafv-editor .clip.missing { background: #4a282d; border-color: #d45656; }
+.yafv-editor :is(.clip-name, .clip small) { text-shadow: none; }
+.yafv-editor .clip-thumbnail { opacity: .15; }
+.yafv-editor .playhead { background: var(--mm-ink); }
+.yafv-editor .ink-span { background: #73737340; border-color: #9999a5; }
+.yafv-editor .hint { color: #d4d4d8; }
+.yafv-review { display: flex; flex-direction: column; gap: 8px; min-height: 320px; }
+.yafv-review video { border-radius: 12px; }
+.yafv-h3 .stop { background: var(--mm-canvas); border-color: #d45656; }
+.yafv-h3 .status { margin-top: 8px; }
+@container (max-width: 560px) {
+    .yafv-prompts .body, .yafv-editor .workspace, .yafv-storyboard .scene-list { grid-template-columns: 1fr; }
+    .yafv-storyboard .toolbar { flex-wrap: wrap; }
+    .yafv-storyboard .status { flex-basis: 100%; text-align: left; }
+}
+@media (pointer: coarse) {
+    :is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) :is(button, input:not([type=checkbox]):not([type=range]), select) { min-height: 44px; }
+}
+.yafv-prompts { min-width: 0; font-size: calc(12 * var(--unit, 1px)); }
+.yafv-editor { min-width: 0; font-size: calc(12px * var(--ui-scale, 1)); }
+/* Media thumbnails are content tiles rather than action pills. */
+.yafv-prompts .media-tile { padding: 0; border: 0; border-radius: 0; background: #090e15; }
+.yafv-prompts .browser-file, .yafv-editor .asset { border-radius: 12px; }
+.yafv-prompts .soundtrack-badge { border-radius: 9999px; }
+.yafv-editor .asset { padding: 4px; }
+.yafv-editor .timeline-scroll.drop { border-color: var(--mm-focus); }
+.yafv-storyboard { height: 100%; overflow: auto; }
+.yafv-editor:fullscreen { height: 100vh; width: 100vw; border-radius: 0; }
+:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review) button.secondary { border-color: var(--mm-ink); }
+.yafv-prompts .entry { border-radius: 12px; }
+.yafv-prompts .entry .choose { background: transparent; border-color: transparent; }
+
+.yafv-editor .tick { color: var(--mm-muted); border-color: var(--mm-hairline); }
+.yafv-editor .ruler { border-color: var(--mm-hairline); }
+
+.yafv-prompts { gap: calc(8 * var(--unit, 1px)); }
+.yafv-editor { gap: calc(8px * var(--ui-scale, 1)); }
+.yafv-prompts .body { grid-template-columns: calc(190 * var(--unit, 1px)) minmax(0, 1fr); gap: calc(10 * var(--unit, 1px)); }
+.yafv-editor .workspace { grid-template-columns: calc(190px * var(--ui-scale, 1)) minmax(0, 1fr); gap: calc(8px * var(--ui-scale, 1)); }
+.yafv-storyboard .intro { margin: 8px 0 10px; }
+.yafv-storyboard .section-title { margin: 12px 0 6px; }
+.yafv-storyboard .preview { min-height: 180px; }
+@container (max-width: 560px) {
+    .yafv-prompts .body, .yafv-editor .workspace { grid-template-columns: 1fr; }
+}
+
+/* Native DOM widgets and the Vue node renderer share the panel palette. */
+.yafv-native-widget,
+.yafv-native-widget :is(input, textarea, select) {
+    color-scheme: dark;
+    background: #232329;
+    color: #f4f4f5;
+    border-color: #41414b;
+    font-family: "DM Sans", Inter, Arial, sans-serif;
+}
+.lg-node:has(:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review, .yafv-native-widget)) {
+    --component-node-background: #18181c !important;
+    --component-node-border: #41414b;
+    --node-component-header-surface: #232329;
+    --node-component-header: #f4f4f5;
+    color: #f4f4f5;
+    font-family: "DM Sans", Inter, Arial, sans-serif;
+}
+.lg-node:has(:is(.yafv-h3, .yafv-storyboard, .yafv-prompts, .yafv-editor, .yafv-review, .yafv-native-widget)) .lg-node-widgets :is(input, textarea, select) {
+    background: #232329;
+    color: #f4f4f5;
+    border-color: #41414b;
+    font-family: inherit;
+}
+
+/* Leave the canvas socket labels visible beside the prompt workspace. */
+.dom-widget > .yafv-prompts {
+    margin-left: 110px;
+    width: calc(100% - 260px);
+    min-height: 0;
+}
+/* Vue lays out slots separately; its DOM content needs no canvas gutters. */
+.lg-node .yafv-prompts { margin-left: 0; width: 100%; }

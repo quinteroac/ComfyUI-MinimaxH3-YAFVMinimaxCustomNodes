@@ -84,14 +84,11 @@ class PromptPanel {
         this.detail.addEventListener("click", event => { if (event.target === this.detail) this.closeDetail(); });
         this.renderMedia();
         for (const definition of settingDefinitions) this.settingControl(definition);
-        for (const widget of node.widgets ?? []) {
-            widget.type = "hidden";
-            widget.computeSize = () => [0, -4];
-        }
         this.widget = node.addDOMWidget("video_prompt_panel", "yafv_video_prompts", this.root, {
             serialize: false, getMinHeight: () => 580,
         });
         this.widget.serialize = false;
+        this.layout();
         this.resizeObserver = new ResizeObserver(() => {
             const scale = Math.max(.85, Math.min(1.7, Math.sqrt(this.root.clientWidth * this.root.clientHeight / (1000 * 760))));
             this.root.style.setProperty("--unit", `${scale.toFixed(2)}px`);
@@ -108,9 +105,21 @@ class PromptPanel {
         };
         api.addEventListener("executed", this.onExecuted);
         this.timer = setInterval(() => this.refresh(), 3000);
-        node.setSize([1020, 840]);
+        node.setSize([920, 760]);
         panels.add(this); this.controls();
-        queueMicrotask(() => this.activate());
+        queueMicrotask(() => { this.layout(); this.activate(); });
+    }
+    layout() {
+        // Socket columns flank the panel instead of pushing it below every output.
+        this.node.widgets_start_y = 6;
+        for (const widget of this.node.widgets ?? []) {
+            if (widget === this.widget) continue;
+            widget.hidden = true;
+            widget.type = "hidden";
+            widget.computeSize = () => [0, -4];
+            if (widget.element) widget.element.hidden = true;
+        }
+        this.node.setDirtyCanvas?.(true, true);
     }
     value(name, value) {
         const widget = this.node.widgets.find(w => w.name === name);
@@ -527,7 +536,11 @@ app.registerExtension({
                 if (nodeData.name === "YAFVReferenceVideoPrompts") {
                     for (let i = this.outputs.length; i < nodeData.output.length; i++) this.addOutput(nodeData.output_name[i], nodeData.output[i]);
                 }
-                queueMicrotask(() => this.videoPrompts?.activate()); return result;
+                queueMicrotask(() => {
+                    this.videoPrompts?.layout();
+                    this.videoPrompts?.activate();
+                });
+                return result;
             };
         }
         const connected = nodeType.prototype.onConnectionsChange;

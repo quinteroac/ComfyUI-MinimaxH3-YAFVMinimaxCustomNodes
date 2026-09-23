@@ -9,29 +9,10 @@ const labels = {
     audio_refine: "Refining full audio · low-resolution video",
     cancelled: "Cancelled", error: "Execution failed",
 };
-const style = document.createElement("style");
-style.textContent = `
-.yafv-h3 { box-sizing:border-box; padding:14px; border:1px solid #374151; border-radius:14px;
-    background:linear-gradient(145deg,#192432,#111821); color:#e8edf5; font:12px system-ui,sans-serif; }
-.yafv-h3 * { box-sizing:border-box; }
-.yafv-h3 header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.yafv-h3 strong { font-size:14px; letter-spacing:.3px; }
-.yafv-h3 .badge { color:#88e0cc; font-size:10px; letter-spacing:1px; }
-.yafv-h3 .status { margin:10px 0 5px; color:#9cddcf; }
-.yafv-h3 .summary { color:#aebccc; line-height:1.5; margin-bottom:12px; }
-.yafv-h3 nav { display:flex; gap:5px; flex-wrap:wrap; }
-.yafv-h3 button { cursor:pointer; padding:7px 10px; border:1px solid #425164;
-    border-radius:8px; color:#cbd5e1; background:#202d3e; font:inherit; }
-.yafv-h3 button[aria-selected="true"] { background:#285248; color:#c7fff0; border-color:#54a591; }
-.yafv-h3 button:focus-visible { outline:2px solid #88e0cc; outline-offset:2px; }
-.yafv-h3 button:disabled { cursor:default; opacity:.45; }
-.yafv-h3 figure { margin:12px 0 0; }
-.yafv-h3 video { width:100%; max-height:320px; display:block; border-radius:8px; background:#070b10; }
-.yafv-h3 figcaption { margin:6px 0; color:#aebccc; }
-.yafv-h3 .stop { margin-top:8px; border-color:#98515c; color:#ffd4da; background:#442a33; }
-.yafv-h3 [hidden] { display:none !important; }
-`;
-document.head.append(style);
+const sheet = document.createElement("link");
+sheet.rel = "stylesheet";
+sheet.href = new URL("./two_pass.css", import.meta.url).href;
+document.head.append(sheet);
 
 function value(node, name) {
     return node.widgets?.find(w => w.name === name)?.value;
@@ -107,7 +88,7 @@ function createPanel(node) {
         node, root, tab: "Pass 1", tabs: new Map(), originals: new Map(), active: false,
         summary: root.querySelector(".summary"), status: root.querySelector(".status"),
         video: root.querySelector("video"), figure: root.querySelector("figure"), stop: root.querySelector(".stop"),
-        height() { return this.figure.hidden ? (this.active ? 186 : 148) : 520; },
+        height() { return this.figure.hidden ? (this.active ? 200 : 164) : 540; },
         clearPreview() {
             this.video.pause();
             if (this.video.hasAttribute("src")) {
@@ -190,8 +171,6 @@ app.registerExtension({
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function (...args) {
             const result = created?.apply(this, args);
-            this.color = "#223a3a";
-            this.bgcolor = "#142329";
             this.h3Panel = createPanel(this);
             return result;
         };

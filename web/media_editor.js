@@ -142,7 +142,7 @@ class Editor {
             serialize: false, getMinHeight: () => 560,
         });
         this.widget.serialize = false;
-        node.setSize([1120, 860]);
+        node.setSize([1000, 780]);
     }
     sessionKey() {
         return JSON.stringify([this.sessionId, this.node.id]);

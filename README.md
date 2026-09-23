@@ -167,3 +167,7 @@ files, not in the workflow. Editing or deleting an entry preserves any revision
 already submitted to the queue; unreferenced files are removed on subsequent
 library activity. Restarting ComfyUI clears the list. Browser playback depends
 on codec support; generation uses the saved, decoded references.
+
+### MiniMax panel theme
+
+The two-pass sampler, storyboard, video/reference prompts, media editor and project review share a dark adaptation of the MiniMax theme: local DM Sans, light pill actions, charcoal surfaces and compact product-color accents. The supplied brand guide defines only a light palette; these dark colors are a local adaptation. Native node titles, bodies and controls use the same palette, including when loading saved workflows. Styling is scoped to this extension’s nodes. The font and its OFL license are bundled in `web/fonts`; no external font service is used.

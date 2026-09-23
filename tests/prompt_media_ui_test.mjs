@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import http from "node:http";
 import { promisify } from "node:util";
 
-const files = Object.fromEntries(await Promise.all(["video_prompts.js", "prompt_media_picker.js", "video_prompts.css"].map(async name => [`/extensions/yafv/${name}`, await readFile(new URL(`../web/${name}`, import.meta.url), "utf8")])));
+const files = Object.fromEntries(await Promise.all(["video_prompts.js", "prompt_media_picker.js", "video_prompts.css", "minimax.css"].map(async name => [`/extensions/yafv/${name}`, await readFile(new URL(`../web/${name}`, import.meta.url), "utf8")])));
 const harness = `
 import { app } from '/scripts/app.js';
 import '/extensions/yafv/video_prompts.js';
@@ -14,17 +14,35 @@ const check = (condition, message) => { if (!condition) throw Error(message); };
 class BaseNode {
     constructor(id) {
         this.id=id; this.graph={id:'test'}; this.inputs=[{name:'context_image',link:null}]; this.outputs=[];
-        this.widgets=['collection_id','revision_id'].map(name=>({name,value:''}));
+        this.widgets=['collection_id','revision_id'].map(name=>({name,value:'',element:document.createElement('input')}));
     }
-    addDOMWidget(name,type,element) { document.body.append(element); element.style.width='1000px'; element.style.height='840px'; return {name,type}; }
+    addDOMWidget(name,type,element) {
+        const wrapper=document.createElement('div'); wrapper.className='dom-widget';
+        wrapper.style.cssText='width:920px;height:740px'; document.body.append(wrapper); wrapper.append(element);
+        const widget={name,type,element}; this.widgets.push(widget); return widget;
+    }
     setSize() {} setDirtyCanvas() {}
 }
 try {
     class ReferenceNode extends BaseNode {}
-    await app.extension.beforeRegisterNodeDef(ReferenceNode,{name:'YAFVReferenceVideoPrompts'});
+    await app.extension.beforeRegisterNodeDef(ReferenceNode,{name:'YAFVReferenceVideoPrompts',output:[],output_name:[]});
     const node=new ReferenceNode(1); node.onNodeCreated(); await tick();
     const panel=node.videoPrompts;
     check(panel.hydrated,'Panel hydrated');
+    const checkLayout = (node) => {
+        const panel=node.videoPrompts;
+        check(node.widgets_start_y===6,'Panel starts alongside socket columns');
+        check(node.widgets.filter(w=>w!==panel.widget).every(w=>w.hidden && w.type==='hidden' && (!w.element || w.element.hidden)), 'Native fields and DOM elements fully hidden');
+        const outer=panel.root.parentElement.getBoundingClientRect(), inner=panel.root.getBoundingClientRect();
+        check(inner.left-outer.left>=109 && outer.right-inner.right>=149,'Socket label gutters remain clear');
+        check(inner.top===outer.top && inner.bottom<=outer.bottom+1,'Panel fills allocated height without top gap or overflow');
+    };
+    checkLayout(node);
+    const late={name:'control_after_generate',value:'fixed',element:document.createElement('input')};
+    node.widgets.push(late); node.widgets_start_y=350;
+    node.onConfigure({}); await tick();
+    checkLayout(node);
+    check(late.value==='fixed','Late widget retains serialized value');
     check(panel.$('.media-add') && !panel.$('.frame'),'Empty gallery');
     const image=new File([await (await fetch('/pixel.png')).blob()],'scene.png',{type:'image/png'});
     panel.addDroppedFiles([image,image]);
@@ -69,6 +87,7 @@ try {
     await app.extension.beforeRegisterNodeDef(VideoNode,{name:'YAFVVideoPrompts'});
     const videoNode=new VideoNode(2); videoNode.onNodeCreated(); await tick();
     const frames=videoNode.videoPrompts;
+    checkLayout(videoNode);
     check(frames.$('.frames').children.length===2,'Fixed start/end slots');
     frames.setFile('first','image',image); frames.setFile('last','image',image);
     videoNode.inputs[0].link=10; videoNode.onConnectionsChange();

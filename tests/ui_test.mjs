@@ -78,11 +78,13 @@ const routes = {
     "/scripts/app.js": "export const app={registerExtension(extension){this.extension=extension}};",
     "/scripts/api.js": "export const api=new EventTarget();api.apiURL=p=>p;api.interrupt=async()=>{api.interrupted=true};",
     "/extensions/yafv/two_pass.js": source,
+    "/extensions/yafv/two_pass.css": await readFile(new URL("../web/two_pass.css", import.meta.url), "utf8"),
+    "/extensions/yafv/minimax.css": await readFile(new URL("../web/minimax.css", import.meta.url), "utf8"),
     "/test.js": harness,
 };
 const server = http.createServer((request, response) => {
     const path = request.url.split("?")[0];
-    response.writeHead(path in routes ? 200 : 404, {"Content-Type": path === "/" ? "text/html" : "text/javascript"});
+    response.writeHead(path in routes ? 200 : 404, {"Content-Type": path === "/" ? "text/html" : path.endsWith(".css") ? "text/css" : "text/javascript"});
     response.end(routes[path] ?? "");
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
