@@ -1,5 +1,6 @@
 """Temporary prompt libraries and immutable queue revisions for image-to-video."""
 from collections import Counter
+import asyncio
 from dataclasses import dataclass, field
 import io
 from pathlib import Path
@@ -10,6 +11,7 @@ from aiohttp import web
 import numpy as np
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 import torch
+import folder_paths
 
 from comfy_extras.nodes_textgen import TextGenerate
 from server import PromptServer
@@ -25,6 +27,7 @@ class PromptRevision:
     last: bytes | None
     media: dict = field(default_factory=dict)
     kind: str = "video"
+    media_names: dict = field(default_factory=dict)
 
 
 class PromptLibrary:
@@ -55,16 +58,17 @@ class PromptLibrary:
                 entries.append({"id": entry, "revision": revision, "prompt": item.prompt,
                                 "first": bool(item.first), "last": bool(item.last),
                                 "generated": self.results.get(revision, ""),
+                                "media_names": dict(item.media_names),
                                 **{name: bool(path) for name, path in item.media.items()}})
             return {"epoch": self.epoch, "entries": entries, "selected": collection["selected"]}
 
-    def save(self, key, prompt, first, last, entry=None, base=None, *, media=None, kind="video"):
+    def save(self, key, prompt, first, last, entry=None, base=None, *, media=None, kind="video", media_names=None):
         with self.lock:
             collection = self.collection(key)
             if entry is not None and collection["entries"].get(entry) != base:
                 raise ValueError("The item changed or was deleted in another window. Refresh the list before saving.")
             entry = entry or uuid.uuid4().hex
-            item = PromptRevision(uuid.uuid4().hex, key, entry, prompt, first, last, dict(media or {}), kind)
+            item = PromptRevision(uuid.uuid4().hex, key, entry, prompt, first, last, dict(media or {}), kind, dict(media_names or {}))
             self.revisions[item.id] = item
             collection["entries"][entry] = item.id
             collection["selected"] = entry
@@ -301,6 +305,62 @@ class YAFVVideoPrompts:
                 "result": (generated, *media)}
 
 
+MEDIA_EXTENSIONS = {
+    "image": {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"},
+    "video": {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"},
+    "audio": {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".opus", ".aiff"},
+}
+
+
+def browser_path(source, relative):
+    if source not in {"input", "output"}:
+        raise ValueError("Select Inputs or Outputs.")
+    root = Path(folder_paths.get_directory_by_type(source)).resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("The file must be inside the selected media folder.")
+    return root, path
+
+
+def browse_media(source, relative, kind, search, page):
+    if kind not in MEDIA_EXTENSIONS:
+        raise ValueError("Invalid media type.")
+    root, directory = browser_path(source, relative)
+    folders, files = [], []
+    for path in directory.iterdir():
+        if not path.resolve().is_relative_to(root) or search.casefold() not in path.name.casefold():
+            continue
+        if path.is_dir():
+            folders.append({"name": path.name, "path": path.relative_to(root).as_posix(), "folder": True})
+        elif path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS[kind]:
+            files.append({"name": path.name, "path": path.relative_to(root).as_posix(), "size": path.stat().st_size})
+    entries = sorted(folders, key=lambda x: x["name"].casefold()) + sorted(files, key=lambda x: x["name"].casefold())
+    return {"entries": entries[page * 100:(page + 1) * 100], "total": len(entries)}
+
+
+@routes.get("/yafv/prompts/browse")
+async def get_browser(request):
+    try:
+        page = max(0, int(request.query.get("page", "0")))
+        result = await asyncio.to_thread(browse_media, request.query.get("source", "input"),
+                                        request.query.get("path", ""), request.query.get("kind", "image"),
+                                        request.query.get("search", ""), page)
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+    except (ValueError, OSError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+
+
+@routes.get("/yafv/prompts/browse-file")
+async def get_browser_file(request):
+    try:
+        _, path = browser_path(request.query.get("source", "input"), request.query.get("path", ""))
+        if not path.is_file() or path.suffix.lower() not in set().union(*MEDIA_EXTENSIONS.values()):
+            raise ValueError("Select an available media file.")
+        return web.FileResponse(path, headers={"Cache-Control": "no-store"})
+    except (ValueError, OSError) as error:
+        return web.json_response({"error": str(error)}, status=404)
+
+
 @routes.get("/yafv/prompts/library")
 async def get_library(request):
     collect_unused()
@@ -311,10 +371,11 @@ async def get_library(request):
 async def save_entry(request):
     try:
         parts = await request.multipart()
-        fields, uploads = {}, {}
+        fields, uploads, names = {}, {}, {}
         async for part in parts:
             if part.name in {"first", "last"}:
                 uploads[part.name] = normalized_png(await part.read())
+                names[part.name] = Path((part.filename or part.name).replace("\\", "/")).name
             elif part.name in {"collection", "entry", "base", "prompt", "first_action", "last_action"}:
                 fields[part.name] = await part.text()
         key, prompt = fields["collection"], fields["prompt"]
@@ -322,6 +383,7 @@ async def save_entry(request):
             raise ValueError("Write a prompt before adding it.")
         old = library.revision(key, fields["base"]) if fields.get("entry") else None
         images = {}
+        media_names = dict(old.media_names) if old else {}
         for name in ("first", "last"):
             action = fields.get(f"{name}_action", "keep")
             if action not in {"keep", "remove", "upload"}:
@@ -329,7 +391,11 @@ async def save_entry(request):
             if action == "upload" and name not in uploads:
                 raise ValueError("Missing image file.")
             images[name] = uploads[name] if action == "upload" else (getattr(old, name) if action == "keep" and old else None)
-        library.save(key, prompt, images["first"], images["last"], fields.get("entry") or None, fields.get("base"))
+            if action == "upload":
+                media_names[name] = names[name]
+            elif action == "remove":
+                media_names.pop(name, None)
+        library.save(key, prompt, images["first"], images["last"], fields.get("entry") or None, fields.get("base"), media_names=media_names)
         collect_unused()
         return web.json_response(library.view(key))
     except (ValueError, KeyError, UnidentifiedImageError, OSError) as error:

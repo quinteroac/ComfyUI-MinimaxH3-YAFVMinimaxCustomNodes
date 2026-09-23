@@ -97,6 +97,8 @@ class ReferencePromptTests(unittest.IsolatedAsyncioTestCase):
         entry = await self.saved(uploads={"ref_image_0": png(), "ref_image_1": png((30, 90)),
                                          "ref_video_0": self.video, "ref_audio_0": self.audio,
                                          "ref_audio_1": self.audio, "ref_audio_2": self.audio})
+        self.assertEqual(entry["media_names"]["ref_video_0"], "ref_video_0")
+        self.assertEqual(entry["media_names"]["ref_video_audio_0"], "ref_video_0 · soundtrack")
         outputs = self.execute(entry)["result"]
         self.assertEqual(len(outputs), 16)
         self.assertEqual(outputs[0], "Scene")
@@ -119,7 +121,9 @@ class ReferencePromptTests(unittest.IsolatedAsyncioTestCase):
         entry = await self.saved(prompt="  Original prompt.\n")
         for kwargs in ({}, {"clip": FakeClip()}, {"text": "Expand"}, {"clip": FakeClip(), "text": " "}):
             self.assertEqual(self.execute(entry, **kwargs)["result"], ("  Original prompt.\n",) + (None,) * 15)
-        self.assertEqual(reference.YAFVReferenceVideoPrompts.INPUT_TYPES(), prompts.YAFVVideoPrompts.INPUT_TYPES())
+        inputs = reference.YAFVReferenceVideoPrompts.INPUT_TYPES()
+        self.assertEqual(inputs["optional"].pop("context_video")[0], "VIDEO")
+        self.assertEqual(inputs, prompts.YAFVVideoPrompts.INPUT_TYPES())
 
     async def test_visual_generation_tag_order_and_sampling(self):
         entry = await self.saved(uploads={"ref_image_1": png(), "ref_video_0": self.video, "ref_audio_2": self.audio})
@@ -142,7 +146,7 @@ class ReferencePromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(labels[1], "<Video 1> 0.00s")
         self.assertEqual(labels[-1], "<Video 1> 0.96s")
         clip.tokenize = lambda *args, **kwargs: {"tokens": [1, 2]}
-        with self.assertRaisesRegex(ValueError, "soporte visual"):
+        with self.assertRaisesRegex(ValueError, "vision-capable model"):
             self.execute(entry, clip=clip, text="Expand")
 
     async def test_audio_replacement_removal_and_silent_video(self):
@@ -247,7 +251,7 @@ class ReferencePromptTests(unittest.IsolatedAsyncioTestCase):
             resume.set()
             response = await slow
         self.assertEqual(response.status, 400)
-        self.assertIn("otra ventana", (await response.json())["error"])
+        self.assertIn("another window", (await response.json())["error"])
         self.assertFalse(Path(old_path).exists())
         self.assertFalse(prompts.library.leases)
         self.assertFalse(list(Path(reference.media_directory.name).iterdir()))

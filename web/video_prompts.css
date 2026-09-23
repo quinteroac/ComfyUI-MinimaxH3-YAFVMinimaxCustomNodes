@@ -1,6 +1,95 @@
-.yafv-prompts{--unit:1px;box-sizing:border-box;display:flex;flex-direction:column;gap:calc(12 * var(--unit));height:100%;min-height:580px;min-width:650px;padding:calc(16 * var(--unit));overflow:auto;background:#111a25;color:#e4edf5;border:1px solid #37495d;border-radius:12px;font:calc(13 * var(--unit))/1.4 system-ui,sans-serif}
-.yafv-prompts *{box-sizing:border-box}.yafv-prompts header,.yafv-prompts .actions,.yafv-prompts footer{display:flex;gap:calc(8 * var(--unit));align-items:center;flex-wrap:wrap}.yafv-prompts header strong{font-size:1.25em;margin-right:auto}.yafv-prompts .badge{padding:.3em .65em;border:1px solid #3e665f;border-radius:20px;color:#9fe1ce;font-size:.85em}.yafv-prompts .muted{color:#9eaec0;font-size:.9em}.yafv-prompts button,.yafv-prompts select,.yafv-prompts input,.yafv-prompts textarea{font:inherit;color:inherit;background:#1d2c3e;border:1px solid #41566b;border-radius:6px;padding:.45em .65em}.yafv-prompts button{cursor:pointer}.yafv-prompts button:hover{background:#2e435a}.yafv-prompts button:disabled{opacity:.4;cursor:default}.yafv-prompts button.primary{background:#285b50;border-color:#4b9e86}.yafv-prompts button.danger{color:#fdaeb2}.yafv-prompts button:focus-visible,.yafv-prompts textarea:focus-visible,.yafv-prompts input:focus-visible{outline:2px solid #8ee7ce;outline-offset:2px}.yafv-prompts .body{display:grid;grid-template-columns:calc(240 * var(--unit)) minmax(0,1fr);gap:calc(14 * var(--unit));flex:1;min-height:calc(350 * var(--unit))}.yafv-prompts aside{display:flex;flex-direction:column;min-height:0;padding:calc(10 * var(--unit));border:1px solid #35485b;border-radius:8px;gap:.7em}.yafv-prompts .entries{overflow:auto;display:flex;flex-direction:column;gap:.5em;flex:1}.yafv-prompts .entry{display:flex;gap:.4em;align-items:center;border:1px solid transparent;border-radius:7px}.yafv-prompts .entry.selected{border-color:#8bd8c0;background:#254638}.yafv-prompts .entry .choose{flex:1;min-width:0;text-align:left;background:transparent;border:0}.yafv-prompts .entry .title{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.yafv-prompts .entry small{display:block;color:#9fb6c8;margin-top:.4em}.yafv-prompts .entry .remove{border:0;background:transparent}.yafv-prompts .form{display:flex;flex-direction:column;gap:calc(10 * var(--unit));min-width:0}.yafv-prompts .frames{display:grid;grid-template-columns:1fr 1fr;gap:calc(10 * var(--unit))}.yafv-prompts .frame{padding:.6em;border:1px solid #41556a;border-radius:8px;min-width:0;background:#152231}.yafv-prompts .drop-zone{position:relative;display:flex;align-items:center;justify-content:center;height:calc(140 * var(--unit));margin:.4em 0;border:1px dashed #526e85;border-radius:5px;overflow:hidden;cursor:pointer;text-align:center;color:#9fafc2}.yafv-prompts .drop-zone img{position:absolute;inset:0;object-fit:contain;width:100%;height:100%;background:#090e15;pointer-events:none}.yafv-prompts .drop-zone.drag{border-color:#90e4cc;background:#28493f}.yafv-prompts .prompt{width:100%;min-height:calc(110 * var(--unit));flex:1;resize:vertical;background:#0d1722}.yafv-prompts .generated{width:100%;min-height:calc(90 * var(--unit));resize:vertical;background:#101f2b}.yafv-prompts details{border-top:1px solid #35485b;padding-top:.6em}.yafv-prompts summary{cursor:pointer;color:#a9c5d9}.yafv-prompts .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(calc(165 * var(--unit)),1fr));gap:.7em;padding-top:.7em}.yafv-prompts .settings label{display:flex;flex-direction:column;gap:.2em;font-size:.9em}.yafv-prompts .settings input,.yafv-prompts .settings select{width:100%}.yafv-prompts .settings input[type=checkbox]{width:auto;align-self:start}.yafv-prompts .unsaved{padding:.7em;background:#493d24;border:1px solid #b18b42;border-radius:7px}.yafv-prompts .status{flex:1;min-width:150px;color:#b5dbd0;overflow-wrap:anywhere}.yafv-prompts .error{color:#ffb0b0}.yafv-prompts .selection{color:#9ee4cd}.yafv-prompts .empty{padding:.5em;color:#a0b1c3}.yafv-prompts [hidden]{display:none!important}
-
-.yafv-prompts.reference-prompts .form{overflow:auto;padding-right:.4em}.yafv-prompts.reference-prompts .frames{flex-shrink:0}.yafv-prompts.reference-prompts .drop-zone{height:calc(85 * var(--unit))}.yafv-prompts.reference-prompts video,.yafv-prompts.reference-prompts audio{display:block;width:100%;margin:.4em 0}.yafv-prompts.reference-prompts video{max-height:calc(180 * var(--unit));background:#090e15}.yafv-prompts .media-note{display:block;color:#9fb6c8}
-
-.yafv-prompts .reference-toolbar{display:flex;align-items:center;gap:.6em;flex-wrap:wrap;flex-shrink:0}.yafv-prompts .reference-menu{display:flex;gap:.5em;width:100%}.yafv-prompts .reference-count{font-size:.85em}.yafv-prompts .soundtrack{display:flex;flex-direction:column;gap:.4em;border-top:1px solid #41556a;margin-top:.7em;padding-top:.7em}.yafv-prompts .soundtrack b{font-size:.85em;overflow-wrap:anywhere}.yafv-prompts .soundtrack button{align-self:flex-start}
+.yafv-prompts {
+    --unit: 1px; --panel: #152231; --border: #41556a; --muted: #a0b1c3; --accent: #8ee7ce;
+    box-sizing: border-box; display: flex; flex-direction: column; gap: calc(12 * var(--unit));
+    height: 100%; min-height: 580px; min-width: 650px; padding: calc(16 * var(--unit)); overflow: auto;
+    background: #111a25; color: #e4edf5; border: 1px solid #37495d; border-radius: 12px;
+    font: calc(13 * var(--unit))/1.4 system-ui, sans-serif;
+}
+.yafv-prompts * { box-sizing: border-box; }
+.yafv-prompts header, .yafv-prompts .actions, .yafv-prompts footer, .yafv-prompts .reference-toolbar,
+.yafv-prompts .dialog-heading, .yafv-prompts .dialog-actions, .yafv-prompts .browser-tools, .yafv-prompts .browser-pages {
+    display: flex; gap: .65em; align-items: center; flex-wrap: wrap;
+}
+.yafv-prompts header strong { font-size: 1.25em; margin-right: auto; }
+.yafv-prompts .badge { padding: .3em .65em; border: 1px solid #3e665f; border-radius: 20px; color: #9fe1ce; font-size: .85em; }
+.yafv-prompts .muted, .yafv-prompts .empty { color: var(--muted); font-size: .9em; }
+.yafv-prompts button, .yafv-prompts select, .yafv-prompts input, .yafv-prompts textarea {
+    font: inherit; color: inherit; background: #1d2c3e; border: 1px solid var(--border); border-radius: 6px; padding: .45em .65em;
+}
+.yafv-prompts button { cursor: pointer; }
+.yafv-prompts button:hover { background: #2e435a; }
+.yafv-prompts button:disabled { opacity: .4; cursor: default; }
+.yafv-prompts button.primary { background: #285b50; border-color: #4b9e86; }
+.yafv-prompts button.danger { color: #fdaeb2; }
+.yafv-prompts :is(button, textarea, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.yafv-prompts .body { display: grid; grid-template-columns: calc(220 * var(--unit)) minmax(0, 1fr); gap: calc(14 * var(--unit)); flex: 1; min-height: 350px; }
+.yafv-prompts aside { display: flex; flex-direction: column; min-height: 0; padding: .75em; border: 1px solid var(--border); border-radius: 8px; gap: .7em; }
+.yafv-prompts .entries { overflow: auto; display: flex; flex-direction: column; gap: .5em; flex: 1; }
+.yafv-prompts .entry { display: flex; gap: .4em; align-items: center; border: 1px solid transparent; border-radius: 7px; }
+.yafv-prompts .entry.selected { border-color: #8bd8c0; background: #254638; }
+.yafv-prompts .entry .choose { flex: 1; min-width: 0; text-align: left; background: transparent; border: 0; }
+.yafv-prompts .entry .title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.yafv-prompts .entry small { display: block; color: var(--muted); margin-top: .4em; }
+.yafv-prompts .entry .remove { border: 0; background: transparent; }
+.yafv-prompts .form { display: flex; flex-direction: column; gap: .75em; min-width: 0; }
+.yafv-prompts .reference-toolbar { flex-shrink: 0; justify-content: space-between; }
+.yafv-prompts .reference-count { font-size: .8em; }
+.yafv-prompts .context-note { margin: 0; padding: .6em; border-left: 3px solid var(--accent); background: #203b39; font-size: .85em; }
+.yafv-prompts .frames { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65em; flex-shrink: 0; max-height: calc(285 * var(--unit)); overflow-y: auto; padding: 3px; align-content: start; }
+.yafv-prompts.reference-prompts .frames { grid-template-columns: repeat(auto-fill, minmax(calc(110 * var(--unit)), 1fr)); }
+.yafv-prompts .frame { position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; align-self: start; }
+.yafv-prompts .frame.context-override { border-color: var(--accent); }
+.yafv-prompts .media-tile { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: calc(130 * var(--unit)); border: 0; border-radius: 0; padding: 0; background: #090e15; overflow: hidden; }
+.yafv-prompts.reference-prompts .media-tile { height: auto; aspect-ratio: 1; }
+.yafv-prompts .media-tile .media-preview { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.yafv-prompts .tile-empty { display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 2em; }
+.yafv-prompts .tile-empty small { font-size: .4em; }
+.yafv-prompts .tile-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25em; padding: .45em .6em; font-size: .85em; }
+.yafv-prompts .tile-caption small { color: var(--muted); }
+.yafv-prompts .tile-actions { position: absolute; top: .35em; right: .35em; display: flex; gap: .25em; opacity: 0; transition: opacity .15s; }
+.yafv-prompts .frame:hover .tile-actions, .yafv-prompts .frame:focus-within .tile-actions { opacity: 1; }
+.yafv-prompts .tile-actions button { padding: .2em .5em; background: #111a25e8; font-size: 1.1em; }
+.yafv-prompts .tile-play { position: absolute; bottom: .4em; left: .5em; padding: .1em .5em; background: #111a25ba; border-radius: 4px; pointer-events: none; }
+.yafv-prompts .audio-icon { font-size: 3em; color: var(--accent); }
+.yafv-prompts .soundtrack-badge { width: 100%; font-size: .75em; border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+.yafv-prompts .media-add { display: flex; flex-direction: column; justify-content: center; gap: .35em; padding: .65em; min-height: calc(140 * var(--unit)); border: 1px dashed var(--border); border-radius: 8px; text-align: center; font-size: .85em; }
+.yafv-prompts .media-add > span { color: var(--muted); }
+.yafv-prompts .drag { outline: 2px solid var(--accent); outline-offset: -2px; background: #28493f; }
+.yafv-prompts .prompt { width: 100%; min-height: calc(110 * var(--unit)); flex: 1; resize: vertical; background: #0d1722; }
+.yafv-prompts .generated { width: 100%; min-height: calc(90 * var(--unit)); resize: vertical; background: #101f2b; }
+.yafv-prompts details { border-top: 1px solid var(--border); padding-top: .6em; }
+.yafv-prompts summary { cursor: pointer; color: #a9c5d9; }
+.yafv-prompts .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(calc(165 * var(--unit)), 1fr)); gap: .7em; padding-top: .7em; }
+.yafv-prompts .settings label { display: flex; flex-direction: column; gap: .2em; font-size: .9em; }
+.yafv-prompts .settings :is(input, select) { width: 100%; }
+.yafv-prompts .settings input[type=checkbox] { width: auto; align-self: start; }
+.yafv-prompts .unsaved { padding: .7em; background: #493d24; border: 1px solid #b18b42; border-radius: 7px; }
+.yafv-prompts .status { flex: 1; min-width: 150px; color: #b5dbd0; overflow-wrap: anywhere; }
+.yafv-prompts .error { color: #ffb0b0; }
+.yafv-prompts .selection { color: #9ee4cd; }
+.yafv-prompts [hidden] { display: none !important; }
+.yafv-prompts dialog { position: fixed; inset: 0; margin: auto; width: min(760px, 92vw); max-height: 88vh; overflow: auto; padding: 20px; border: 1px solid var(--border); border-radius: 12px; color: #e4edf5; background: #111a25; font: 14px/1.4 system-ui, sans-serif; box-shadow: 0 18px 65px #0009; }
+.yafv-prompts dialog::backdrop { background: #0009; }
+.yafv-prompts .dialog-heading { justify-content: space-between; margin-bottom: 16px; }
+.yafv-prompts .dialog-heading strong { font-size: 1.15em; }
+.yafv-prompts .dialog-actions { justify-content: flex-end; margin-top: 16px; }
+.yafv-prompts .picker-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.yafv-prompts [aria-selected=true], .yafv-prompts [aria-pressed=true] { border-color: var(--accent); background: #254638; }
+.yafv-prompts .upload-target { width: 100%; min-height: 200px; border-style: dashed; background: var(--panel); }
+.yafv-prompts .browser-tools { margin-bottom: 12px; }
+.yafv-prompts .browser-path { flex: 1; overflow-wrap: anywhere; font-size: .85em; }
+.yafv-prompts .browser-tools input { width: 190px; }
+.yafv-prompts .browser-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; height: min(360px, 45vh); overflow-y: auto; padding: 3px; align-content: start; }
+.yafv-prompts .browser-file { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 135px; font-size: 28px; }
+.yafv-prompts .browser-file :is(img, video) { width: 100%; height: 82px; object-fit: contain; pointer-events: none; }
+.yafv-prompts .browser-file span { width: 100%; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yafv-prompts .browser-pages { justify-content: center; margin-top: 12px; }
+.yafv-prompts .picker-status { overflow-wrap: anywhere; font-size: .9em; min-height: 1.4em; }
+.yafv-prompts .picker-selection { margin-right: auto; color: var(--muted); }
+.yafv-prompts .detail-preview { display: flex; justify-content: center; background: #090e15; border-radius: 8px; overflow: hidden; }
+.yafv-prompts .detail-preview :is(img, video) { max-width: 100%; max-height: 52vh; object-fit: contain; }
+.yafv-prompts .detail-preview audio { width: 100%; margin: 24px 12px; }
+.yafv-prompts .detail-info { overflow-wrap: anywhere; }
+.yafv-prompts .detail-audio { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.yafv-prompts .detail-audio audio, .yafv-prompts .detail-audio small { width: 100%; }
+@media (hover: none) { .yafv-prompts .tile-actions { opacity: 1; } }

@@ -128,11 +128,19 @@ storyboard structure; no LLM or prompt enhancer is used.
 Add **YAFV → video → YAFV · Prompts para Reference to Video**. It uses the same
 session-only prompt list, `clip`/`text` inputs and Generate Text settings as
 **Prompts para video**. Each entry can hold up to eight images, two videos with
-independent soundtracks, and three standalone audio files. Use **+ Añadir
-referencia** and choose Imagen, Video or Audio. A card appears only after a file
-is selected; canceling leaves the panel unchanged. Existing cards accept dropped
-replacement files. Each video contains its soundtrack controls. Removing a card
-frees its slot without renumbering other references. Save the entry before queuing.
+independent soundtracks, and three standalone audio files. The compact gallery's
+**+ Add reference** tile opens an Upload / Inputs / Outputs selector with folder
+navigation, search and multiple image selection. Drop files on the add tile to
+add references, or on a thumbnail to replace it. Click a thumbnail to replace;
+its preview button opens a larger image or player with filename and dimensions.
+Video soundtrack playback, replacement and removal are inside that detail view.
+Removing a card preserves the other output sockets; displayed prompt tags follow
+the backend's numbering of present references. Save the entry before queuing.
+
+**Video Prompts** uses the same selector and previews with fixed **Start / End**
+positions. A notice identifies when connected `context_image` overrides Start.
+Both galleries have bounded height to keep the prompt accessible. Media names
+persist with saved session entries; media and prompts still clear on restart.
 
 Connect `generated_prompt` to MiniMax H3 Reference to Video's `prompt`, and the
 reference outputs to its matching optional inputs: `ref_image_0`–`ref_image_7`,

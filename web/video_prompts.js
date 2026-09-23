@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { PromptMediaPicker } from "./prompt_media_picker.js";
 
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";
@@ -52,7 +53,7 @@ class PromptPanel {
           <header><strong>${referenceMode ? "Reference to Video Prompts" : "Video Prompts"}</strong><span class="badge">ComfyUI session</span></header>
           <div class="unsaved" hidden><p>You have unsaved changes. What would you like to do before continuing?</p><div class="actions"><button data-action="saveContinue" class="primary">Save and continue</button><button data-action="discard">Discard</button><button data-action="stay">Keep editing</button></div></div>
           <div class="body"><aside><div class="actions"><b>My prompts</b><span class="count muted">0</span><button data-action="new">+ New</button></div><div class="entries"></div></aside>
-          <section class="form">${referenceMode ? `<div class="reference-toolbar"><button data-action="toggleReferences" aria-expanded="false">+ Add reference</button><span class="reference-count muted"></span><div class="reference-menu" hidden><button data-action="addReference" data-id="image">Image</button><button data-action="addReference" data-id="video">Video</button><button data-action="addReference" data-id="audio">Audio</button></div><input class="reference-picker" type="file" hidden></div>` : ""}<div class="frames"></div>
+          <section class="form"><div class="reference-toolbar"><b>${referenceMode ? "References" : "Frames"}</b><span class="reference-count muted"></span></div><p class="context-note" hidden></p><div class="frames" aria-label="${referenceMode ? "Reference media" : "Start and end frames"}"></div>
             <label>Item prompt</label><textarea class="prompt" placeholder="Describe the scene, movement, or action…" aria-label="Item prompt"></textarea>
             <div class="actions"><button class="primary" data-action="save">Add</button><button class="danger" data-action="delete">Delete item</button><span class="draft muted"></span></div>
             <details open><summary>Last output prompt</summary><textarea class="generated" readonly placeholder="The result will appear after running the workflow." aria-label="Last output prompt"></textarea></details>
@@ -65,19 +66,23 @@ class PromptPanel {
         this.root.addEventListener("keydown", event => event.stopPropagation());
         this.root.addEventListener("click", event => {
             const button = event.target.closest("[data-action]");
-            if (button) this.run(() => this.action(button.dataset.action, button.dataset.id));
+            if (!button) return;
+            const {action, id} = button.dataset;
+            if (action === "addReference") this.chooseMedia(null, id);
+            else if (action === "chooseMedia" || action === "replaceDetail") {
+                const name = id || this.detailName;
+                this.chooseMedia(name, this.media.find(([slot]) => slot === name)[1]);
+            } else this.run(() => this.action(action, id));
         });
         this.$(".prompt").oninput = () => this.markDirty();
-        if (referenceMode) {
-            this.$(".reference-picker").onchange = event => {
-                const input = event.target, kind = input.dataset.kind;
-                const slot = this.availableSlot(kind);
-                if (slot && input.files[0]) this.setFile(slot[0], kind, input.files[0]);
-                input.value = "";
-            };
-        } else {
-            for (const [name, kind, label] of this.media) this.frameControl(name, kind, label);
-        }
+        this.picker = new PromptMediaPicker(this.root);
+        this.detail = document.createElement("dialog"); this.detail.className = "media-detail";
+        this.detail.innerHTML = `<div class="dialog-heading"><strong></strong><button type="button" class="detail-close" aria-label="Close preview">×</button></div><div class="detail-preview"></div><p class="detail-info muted"></p><div class="detail-audio"></div><div class="dialog-actions"><button data-action="replaceDetail">Replace</button><button data-action="removeDetail" class="danger">Remove</button></div>`;
+        this.root.append(this.detail);
+        this.detail.querySelector(".detail-close").onclick = () => this.closeDetail();
+        this.detail.addEventListener("cancel", event => { event.preventDefault(); this.closeDetail(); });
+        this.detail.addEventListener("click", event => { if (event.target === this.detail) this.closeDetail(); });
+        this.renderMedia();
         for (const definition of settingDefinitions) this.settingControl(definition);
         for (const widget of node.widgets ?? []) {
             widget.type = "hidden";
@@ -125,7 +130,9 @@ class PromptPanel {
         finally { this.busy = false; if (!this.disposed) this.controls(); }
     }
     controls() {
-        for (const button of this.root.querySelectorAll("button")) button.disabled = this.busy || !this.hydrated;
+        for (const button of this.root.querySelectorAll("button")) {
+            if (!button.closest(".media-picker")) button.disabled = this.busy || !this.hydrated;
+        }
         this.$('[data-action="refresh"]').disabled = this.busy;
         this.$('[data-action="save"]').textContent = this.current ? "Save changes" : "Add";
         this.$('[data-action="save"]').disabled ||= !this.$(".prompt").value.trim();
@@ -137,15 +144,21 @@ class PromptPanel {
         if (this.referenceMode) {
             const counts = ["image", "video", "audio"].map(kind => {
                 const slots = this.referenceSlots(kind), count = slots.filter(([name]) => this.hasMedia(name)).length;
-                this.$(`[data-action="addReference"][data-id="${kind}"]`).disabled ||= count === slots.length;
+                const add = this.$(`[data-action="addReference"][data-id="${kind}"]`);
+                if (add) add.disabled ||= count === slots.length;
                 return `${count}/${slots.length} ${{image: "images", video: "videos", audio: "audios"}[kind]}`;
             });
             this.$(".reference-count").textContent = counts.join(" · ");
         }
+        for (const button of this.root.querySelectorAll('[data-action="previewMedia"], [data-action="removeImage"]')) button.disabled ||= !this.hasMedia(button.dataset.id);
         this.mode();
     }
     mode() {
         const connected = name => this.node.inputs?.find(input => input.name === name)?.link != null;
+        const note = this.$(".context-note");
+        note.hidden = !connected(this.referenceMode ? "context_video" : "context_image");
+        note.textContent = this.referenceMode ? "Connected context video is used for prompt generation; reference outputs remain as selected." : "Connected context image replaces the Start frame when running the workflow.";
+        this.$(".first")?.classList.toggle("context-override", connected("context_image"));
         this.$(".badge").textContent = connected("clip") && connected("text") ? "CLIP + instructions · generates when text is not empty" : "Original text";
     }
     async activate() {
@@ -183,7 +196,10 @@ class PromptPanel {
             const choose = document.createElement("button"); choose.className = "choose"; choose.dataset.action = "select"; choose.dataset.id = entry.id;
             const title = document.createElement("span"); title.className = "title"; title.textContent = entry.prompt;
             const frames = document.createElement("small"); frames.textContent = this.referenceMode
-                ? this.media.filter(([name]) => entry[name]).map(([name]) => name).join(" · ") || "No references"
+                ? ["image", "video", "audio"].map(kind => {
+                    const count = this.referenceSlots(kind).filter(([name]) => entry[name]).length;
+                    return count ? `${count} ${kind}${count === 1 ? "" : "s"}` : "";
+                }).filter(Boolean).join(" · ") || "No references"
                 : `${entry.first ? "● Inicio" : "○ Inicio"} · ${entry.last ? "● Final" : "○ Final"}`;
             choose.append(title, frames);
             const remove = document.createElement("button"); remove.className = "remove danger"; remove.textContent = "×";
@@ -201,15 +217,8 @@ class PromptPanel {
         this.releaseURLs(); this.files = {}; this.imageActions = {}; this.current = entry; this.dirty = false; this.drafting = false;
         this.$(".prompt").value = entry?.prompt ?? "";
         this.$(".generated").value = entry?.generated ?? "";
-        if (this.referenceMode) {
-            this.clearMedia(this.$(".frames"));
-            this.$(".frames").replaceChildren();
-            this.$(".reference-menu").hidden = true;
-            this.$('[data-action="toggleReferences"]').setAttribute("aria-expanded", "false");
-            this.renderMedia();
-        } else {
-            for (const [frame] of this.media) this.preview(frame);
-        }
+        this.closeDetail();
+        this.renderMedia();
         this.message(entry ? "Item selected. Run the workflow from the ComfyUI queue." : "Write a prompt and click Add.");
         this.controls();
     }
@@ -233,60 +242,195 @@ class PromptPanel {
         for (const element of container.querySelectorAll("video, audio")) { element.pause(); element.removeAttribute("src"); element.load(); }
     }
     renderMedia() {
-        for (const [name, kind, label] of this.media) {
-            const soundtrack = name.startsWith("ref_video_audio_");
-            const video = soundtrack ? name.replace("ref_video_audio_", "ref_video_") : null;
-            const parent = soundtrack && this.hasMedia(video) ? this.$(`.${video} .soundtrack-container`) : this.$(".frames");
-            const visible = this.hasMedia(name) || (soundtrack && this.hasMedia(video));
-            let section = this.$(`.${name}`);
-            if (section && (!visible || section.parentElement !== parent)) {
-                this.clearMedia(section); section.remove(); section = null;
+        const frames = this.$(".frames"); this.clearMedia(frames); frames.replaceChildren();
+        for (const [name, kind] of this.media) {
+            if (name.startsWith("ref_video_audio_")) continue;
+            if (!this.referenceMode || this.hasMedia(name)) this.frameControl(name, kind);
+        }
+        if (this.referenceMode) {
+            const add = document.createElement("div"); add.className = "media-add";
+            const title = document.createElement("span"); title.textContent = "+ Add reference"; add.append(title);
+            for (const kind of ["image", "video", "audio"]) {
+                const button = document.createElement("button"); button.type = "button";
+                button.dataset.action = "addReference"; button.dataset.id = kind;
+                button.textContent = {image: "Image", video: "Video", audio: "Audio"}[kind]; add.append(button);
             }
-            if (visible && !section) {
-                this.frameControl(name, kind, label, parent, soundtrack && this.hasMedia(video));
-                this.preview(name);
-            }
+            add.ondragover = event => { event.preventDefault(); event.stopPropagation(); add.classList.add("drag"); };
+            add.ondragleave = () => add.classList.remove("drag");
+            add.ondrop = event => {
+                event.preventDefault(); event.stopPropagation(); add.classList.remove("drag");
+                this.addDroppedFiles([...event.dataTransfer.files]);
+            };
+            frames.append(add);
         }
     }
-    setFile(frame, kind, file) {
+    mediaLabel(name) {
+        if (name === "first") return "Start";
+        if (name === "last") return "End";
+        if (name.startsWith("ref_video_audio_")) return "Video soundtrack";
+        const kind = this.media.find(([slot]) => slot === name)?.[1];
+        const present = this.referenceSlots(kind).filter(([slot]) => this.hasMedia(slot));
+        return `${{image: "Image", video: "Video", audio: "Audio"}[kind]} ${present.findIndex(([slot]) => slot === name) + 1}`;
+    }
+    mediaTag(name) {
+        if (!this.referenceMode) return "";
+        // Match reference_sheet: video soundtracks precede standalone audio tags.
+        if (name.startsWith("ref_audio_") || name.startsWith("ref_video_audio_")) {
+            const videos = this.referenceSlots("video").filter(([slot]) => this.hasMedia(slot));
+            if (videos.some(([slot]) => this.imageActions[slot] === "upload" && !this.imageActions[slot.replace("ref_video_", "ref_video_audio_")])) return "Audio tag after save";
+            const soundtracks = videos.map(([slot]) => slot.replace("ref_video_", "ref_video_audio_")).filter(slot => this.hasMedia(slot));
+            if (name.startsWith("ref_video_audio_")) return `<Audio ${soundtracks.indexOf(name) + 1}>`;
+            const index = this.referenceSlots("audio").filter(([slot]) => this.hasMedia(slot)).findIndex(([slot]) => slot === name);
+            return `<Audio ${soundtracks.length + index + 1}>`;
+        }
+        return `<${this.mediaLabel(name).replace("Image ", "Picture ")}>`;
+    }
+    mediaURL(name) {
+        if (!this.hasMedia(name)) return null;
+        if (this.urls[name]) return this.urls[name];
+        if (name.startsWith("ref_video_audio_")) {
+            const video = name.replace("ref_video_audio_", "ref_video_");
+            if (this.imageActions[video] === "upload" && !this.imageActions[name]) return this.urls[video];
+        }
+        return this.current?.[name] ? api.apiURL(`${BASE}/${this.referenceMode ? "media" : "image"}/${this.current.revision}/${name}?${new URLSearchParams({collection: this.collection})}`) : null;
+    }
+    fileName(name) {
+        if (this.files[name]) return this.files[name].name;
+        if (name.startsWith("ref_video_audio_")) {
+            const video = name.replace("ref_video_audio_", "ref_video_");
+            if (this.imageActions[video] === "upload" && !this.imageActions[name]) return `${this.files[video].name} · soundtrack`;
+        }
+        return this.current?.media_names?.[name] || this.mediaLabel(name);
+    }
+    setFile(frame, kind, file, render = true) {
         if (!file || this.busy || !this.hydrated || this.disposed) return;
         if (file.type && !file.type.startsWith(`${kind}/`) && file.type !== "application/octet-stream") return this.message(`Select a ${kind} file.`, true);
+        if (kind === "video") {
+            const audio = frame.replace("ref_video_", "ref_video_audio_");
+            if (this.urls[audio]) URL.revokeObjectURL(this.urls[audio]);
+            delete this.urls[audio]; delete this.files[audio]; delete this.imageActions[audio];
+        }
         if (this.urls[frame]) URL.revokeObjectURL(this.urls[frame]);
         this.files[frame] = file; this.imageActions[frame] = "upload"; this.urls[frame] = URL.createObjectURL(file);
-        if (this.referenceMode) this.renderMedia();
-        this.preview(frame);
-        if (kind === "video") this.preview(frame.replace("ref_video_", "ref_video_audio_"));
+        if (render) this.renderMedia();
         this.markDirty();
     }
-    preview(frame) {
-        const section = this.$(`.${frame}`);
-        if (!section) return;
-        const element = section.querySelector(".media-preview");
-        const video = frame.startsWith("ref_video_audio_") ? frame.replace("ref_video_audio_", "ref_video_") : null;
-        const autoAudio = video && this.imageActions[video] === "upload" && !this.imageActions[frame];
-        const url = this.urls[frame] || (autoAudio ? this.urls[video] : this.hasMedia(frame) && this.current?.[frame] ? api.apiURL(`${BASE}/${this.referenceMode ? "media" : "image"}/${this.current.revision}/${frame}?${new URLSearchParams({collection: this.collection})}`) : null);
-        element.hidden = !url;
-        if (element.tagName !== "IMG") element.pause();
-        if (url) element.src = url; else element.removeAttribute("src");
-        if (element.tagName !== "IMG") element.load();
-        section.querySelector(".media-note").textContent = autoAudio ? "Extracted when saving if the video contains audio." : "";
-        if (section.classList.contains("soundtrack")) {
-            section.querySelector('[data-action="removeImage"]').hidden = !this.hasMedia(frame);
-            section.querySelector(".choose-file").textContent = this.hasMedia(frame) ? "Replace audio" : "Attach audio";
+    addDroppedFiles(files) {
+        if (this.busy || !this.hydrated) return;
+        const classified = files.map(file => ({file, kind: file.type.split("/")[0]}));
+        if (classified.some(({kind}) => !["image", "video", "audio"].includes(kind))) return this.message("Use the media selector for files with an unknown type.", true);
+        for (const kind of ["image", "video", "audio"]) {
+            const available = this.referenceSlots(kind).filter(([name]) => !this.hasMedia(name)).length;
+            if (classified.filter(item => item.kind === kind).length > available) return this.message(`Only ${available} ${kind} slots are available.`, true);
         }
+        for (const {file, kind} of classified) this.setFile(this.availableSlot(kind)[0], kind, file, false);
+        this.renderMedia(); this.controls();
     }
-    frameControl(frame, kind, label, parent = this.$(".frames"), embedded = false) {
-        const section = document.createElement("div"); section.className = `${embedded ? "soundtrack" : "frame"} ${frame}`;
-        const tag = kind === "image" ? "img" : kind;
-        section.innerHTML = `<b>${label}</b>${embedded ? `<button class="choose-file">Attach audio</button>` : `<div class="drop-zone" role="button" tabindex="0" aria-label="Load ${frame}"><span>Drag a file<br>or click to ${this.referenceMode ? "replace" : "load"}</span>${kind === "image" ? `<img class="media-preview" hidden alt="${frame}">` : ""}</div>`}${kind !== "image" ? `<${tag} class="media-preview" controls preload="metadata" hidden></${tag}>` : ""}<small class="media-note"></small><input type="file" accept="${kind}/*" hidden><button data-action="removeImage" data-id="${frame}">Remove ${kind === "image" ? "image" : kind}</button>${kind === "video" ? '<div class="soundtrack-container"></div>' : ""}`;
-        const input = section.querySelector("input"), drop = section.querySelector(".drop-zone, .choose-file");
-        drop.onclick = () => { if (!this.busy && this.hydrated) input.click(); };
-        if (!embedded) drop.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); drop.click(); } };
-        input.onchange = () => { this.setFile(frame, kind, input.files[0]); input.value = ""; };
-        drop.ondragover = event => { event.preventDefault(); event.stopPropagation(); drop.classList.add("drag"); };
-        drop.ondragleave = () => drop.classList.remove("drag");
-        drop.ondrop = event => { event.preventDefault(); event.stopPropagation(); drop.classList.remove("drag"); this.setFile(frame, kind, event.dataTransfer.files[0]); };
-        parent.append(section);
+    async chooseMedia(name, kind) {
+        if (this.busy || !this.hydrated) return;
+        const count = name ? 1 : this.referenceSlots(kind).filter(([slot]) => !this.hasMedia(slot)).length;
+        if (!count) return;
+        const returnToDetail = this.detailName;
+        this.closeDetail();
+        this.busy = true; this.controls();
+        try {
+            const files = await this.picker.open(kind, kind === "image" ? count : 1, !!name && this.hasMedia(name));
+            this.busy = false;
+            if (this.disposed) return;
+            if (!files) {
+                if (returnToDetail) this.preview(returnToDetail);
+                return;
+            }
+            for (const file of files) this.setFile(name || this.availableSlot(kind)[0], kind, file, false);
+            this.renderMedia();
+            if (returnToDetail) this.preview(returnToDetail);
+        } catch (error) { this.message(error.message, true); }
+        finally { this.busy = false; if (!this.disposed) this.controls(); }
+    }
+    frameControl(name, kind) {
+        const section = document.createElement("div"); section.className = `frame ${name}`;
+        const label = this.mediaLabel(name), url = this.mediaURL(name);
+        section.innerHTML = `<button type="button" class="media-tile" data-action="chooseMedia" data-id="${name}"><span class="tile-empty">+<small>Select ${kind}</small></span></button><div class="tile-actions"><button type="button" data-action="previewMedia" data-id="${name}" aria-label="Preview ${label}" title="Preview">⤢</button><button type="button" data-action="removeImage" data-id="${name}" aria-label="Remove ${label}" title="Remove">×</button></div><div class="tile-caption"><b></b><small></small></div>`;
+        section.querySelector("b").textContent = label;
+        const caption = section.querySelector(".tile-caption small"); caption.textContent = url ? this.mediaTag(name) : "Optional";
+        const tile = section.querySelector(".media-tile"); tile.title = `${url ? this.fileName(name) + " · Click to replace" : "Select " + label} (${name})`;
+        tile.setAttribute("aria-label", `${url ? "Replace" : "Select"} ${label}`);
+        if (url) {
+            tile.replaceChildren();
+            if (kind === "audio") { const icon = document.createElement("span"); icon.className = "audio-icon"; icon.textContent = "♪"; tile.append(icon); }
+            else {
+                const media = document.createElement(kind === "image" ? "img" : "video");
+                media.className = "media-preview"; media.src = url; media.draggable = false;
+                if (kind === "image") { media.alt = label; media.loading = "lazy"; }
+                else { media.muted = true; media.preload = "metadata"; media.playsInline = true; }
+                const loaded = () => {
+                    const dimensions = `${media.naturalWidth || media.videoWidth} × ${media.naturalHeight || media.videoHeight}`;
+                    tile.title = `${this.fileName(name)} · ${dimensions} · Click to replace (${name})`;
+                    if (kind === "video" && Number.isFinite(media.duration)) media.currentTime = Math.min(.1, media.duration / 2);
+                };
+                media.addEventListener(kind === "image" ? "load" : "loadedmetadata", loaded);
+                media.addEventListener("error", () => {
+                    media.hidden = true;
+                    const fallback = document.createElement("small"); fallback.textContent = "Preview unavailable"; tile.append(fallback);
+                }, {once: true});
+                tile.append(media);
+                if (kind === "video") { const play = document.createElement("span"); play.className = "tile-play"; play.textContent = "▶"; tile.append(play); }
+            }
+        }
+        if (kind === "video") {
+            const audio = name.replace("ref_video_", "ref_video_audio_");
+            const indicator = document.createElement("button"); indicator.type = "button"; indicator.className = "soundtrack-badge";
+            indicator.dataset.action = "previewMedia"; indicator.dataset.id = name;
+            indicator.textContent = this.imageActions[name] === "upload" && !this.imageActions[audio] ? "♪ Audio: check on save" : this.hasMedia(audio) ? "♪ Audio attached" : "+ Attach audio";
+            section.append(indicator);
+        }
+        tile.ondragover = event => { event.preventDefault(); event.stopPropagation(); tile.classList.add("drag"); };
+        tile.ondragleave = () => tile.classList.remove("drag");
+        tile.ondrop = event => {
+            event.preventDefault(); event.stopPropagation(); tile.classList.remove("drag");
+            if (event.dataTransfer.files.length !== 1) return this.message("Drop one file to replace this media.", true);
+            this.setFile(name, kind, event.dataTransfer.files[0]);
+        };
+        this.$(".frames").append(section);
+    }
+    closeDetail() {
+        if (!this.detail) return;
+        this.clearMedia(this.detail); this.detail.querySelector(".detail-preview").replaceChildren();
+        this.detail.querySelector(".detail-audio").replaceChildren(); this.detail.close(); this.detailName = null;
+    }
+    preview(name) {
+        const kind = this.media.find(([slot]) => slot === name)?.[1], url = this.mediaURL(name);
+        if (!url) return;
+        this.closeDetail(); this.detailName = name;
+        this.detail.querySelector(".dialog-heading strong").textContent = this.mediaLabel(name);
+        this.detail.setAttribute("aria-label", `${this.mediaLabel(name)} preview`);
+        const info = this.detail.querySelector(".detail-info"); info.textContent = this.fileName(name);
+        const media = document.createElement(kind === "image" ? "img" : kind); media.src = url;
+        if (kind === "image") media.alt = this.mediaLabel(name);
+        else { media.controls = true; media.preload = "metadata"; if (kind === "video") media.muted = true; }
+        media.addEventListener(kind === "image" ? "load" : "loadedmetadata", () => {
+            const dimensions = kind === "audio" ? "" : `${media.naturalWidth || media.videoWidth} × ${media.naturalHeight || media.videoHeight}`;
+            const duration = Number.isFinite(media.duration) ? `${media.duration.toFixed(1)} s` : "";
+            info.textContent = [this.fileName(name), dimensions, duration].filter(Boolean).join(" · ");
+        });
+        media.addEventListener("error", () => { info.textContent = `${this.fileName(name)} · Browser preview unavailable. You can still save the file for processing.`; });
+        this.detail.querySelector(".detail-preview").append(media);
+        if (kind === "video") {
+            const audio = name.replace("ref_video_", "ref_video_audio_");
+            const panel = this.detail.querySelector(".detail-audio");
+            const audioURL = this.mediaURL(audio);
+            const title = document.createElement("b"); title.textContent = `Video soundtrack${audioURL ? " · " + this.mediaTag(audio) : ""}`; panel.append(title);
+            if (audioURL) { const player = document.createElement("audio"); player.src = audioURL; player.controls = true; player.preload = "metadata"; panel.append(player); }
+            if (this.imageActions[name] === "upload" && !this.imageActions[audio]) {
+                const note = document.createElement("small"); note.textContent = "Extracted when saving if the video contains audio."; panel.append(note);
+            }
+            const change = document.createElement("button"); change.type = "button"; change.dataset.action = "chooseMedia"; change.dataset.id = audio;
+            change.textContent = audioURL ? "Replace audio" : "Attach audio"; panel.append(change);
+            if (audioURL) {
+                const remove = document.createElement("button"); remove.type = "button"; remove.dataset.action = "removeImage"; remove.dataset.id = audio; remove.textContent = "Remove audio"; panel.append(remove);
+            }
+        }
+        this.detail.showModal();
     }
     settingControl([name, title, type, min, max, step]) {
         const label = document.createElement("label"); label.textContent = title;
@@ -322,18 +466,8 @@ class PromptPanel {
     }
     async action(action, id) {
         switch (action) {
-            case "toggleReferences": {
-                const menu = this.$(".reference-menu"); menu.hidden = !menu.hidden;
-                this.$('[data-action="toggleReferences"]').setAttribute("aria-expanded", String(!menu.hidden));
-                break;
-            }
-            case "addReference": {
-                if (!this.availableSlot(id)) break;
-                this.$(".reference-menu").hidden = true;
-                this.$('[data-action="toggleReferences"]').setAttribute("aria-expanded", "false");
-                const input = this.$(".reference-picker"); input.dataset.kind = id; input.accept = `${id}/*`; input.click();
-                break;
-            }
+            case "previewMedia": this.preview(id); break;
+            case "removeDetail": { const name = this.detailName; this.closeDetail(); await this.action("removeImage", name); break; }
             case "save": await this.save(); break;
             case "new": await this.guard(() => { this.show(null); this.drafting = true; this.message("New draft. The queue uses the saved selection until you click Add."); }); break;
             case "select": await this.guard(async () => {
@@ -355,8 +489,11 @@ class PromptPanel {
                     if (name === id) this.imageActions[name] = "remove";
                     else delete this.imageActions[name];
                 }
-                if (this.referenceMode) this.renderMedia();
-                this.preview(id); this.markDirty(); break;
+                const detailName = this.detailName;
+                this.renderMedia(); this.markDirty();
+                if (detailName && detailName !== id && this.hasMedia(detailName)) this.preview(detailName);
+                else this.closeDetail();
+                break;
             }
             case "refresh": await this.guard(() => this.refresh(true)); break;
             case "stay": this.pendingAction = null; this.$(".unsaved").hidden = true; break;
@@ -368,7 +505,7 @@ class PromptPanel {
         }
     }
     dispose() {
-        this.clearMedia(this.root);
+        this.closeDetail(); this.picker.dispose(); this.clearMedia(this.root);
         this.disposed = true; clearInterval(this.timer); this.resizeObserver.disconnect(); this.releaseURLs();
         api.removeEventListener("executed", this.onExecuted); panels.delete(this);
     }

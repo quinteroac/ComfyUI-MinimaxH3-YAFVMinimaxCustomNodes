@@ -202,11 +202,12 @@ async def save_reference_entry(request):
         created.append(path)
         return path
     try:
-        fields, uploads = {}, {}
+        fields, uploads, names = {}, {}, {}
         with tempfile.TemporaryDirectory(prefix="upload-", dir=media_directory.name) as staging:
             parts = await request.multipart()
             async for part in parts:
                 if part.name in MEDIA_TYPES:
+                    names[part.name] = Path((part.filename or part.name).replace("\\", "/")).name
                     path = Path(staging) / part.name
                     with path.open("wb") as output:
                         while chunk := await part.read_chunk():
@@ -225,6 +226,7 @@ async def save_reference_entry(request):
             if old and old.kind != "reference":
                 raise ValueError("The item does not belong to Reference to Video.")
             media = {n: old.media.get(n) if old else None for n in MEDIA_TYPES}
+            media_names = dict(old.media_names) if old else {}
             for name, kind in MEDIA_TYPES.items():
                 action = fields.get(f"{name}_action", "keep")
                 if action not in {"keep", "remove", "upload"}:
@@ -232,9 +234,11 @@ async def save_reference_entry(request):
                 if action == "keep":
                     continue
                 media[name] = None
+                media_names.pop(name, None)
                 if kind == "video":
                     audio_name = name.replace("ref_video_", "ref_video_audio_")
                     media[audio_name] = None
+                    media_names.pop(audio_name, None)
                 if action == "remove":
                     continue
                 if name not in uploads:
@@ -256,14 +260,16 @@ async def save_reference_entry(request):
                         await ffmpeg("-i", source, "-map", "0:a:0", "-vn", "-c:a", "pcm_f32le", soundtrack)
                         await asyncio.to_thread(inspect_media, soundtrack, "audio")
                         media[audio_name] = str(soundtrack)
+                        media_names[audio_name] = names[name] + " · soundtrack"
                 else:
                     path = target(".wav")
                     await ffmpeg("-i", source, "-map", "0:a:0", "-vn", "-c:a", "pcm_f32le", path)
                     await asyncio.to_thread(inspect_media, path, kind)
                 media[name] = str(path)
+                media_names[name] = names[name]
             name = "elemento"
             prompts.library.save(key, prompt, None, None, fields.get("entry") or None, fields.get("base"),
-                                 media=media, kind="reference")
+                                 media=media, kind="reference", media_names=media_names)
             committed = True
         prompts.collect_unused()
         return web.json_response(prompts.library.view(key))

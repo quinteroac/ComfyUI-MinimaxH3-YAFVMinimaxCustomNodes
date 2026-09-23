@@ -3,6 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -90,6 +91,42 @@ class VideoPromptTests(unittest.IsolatedAsyncioTestCase):
             if clip:
                 self.assertFalse(clip.calls)
 
+    async def test_media_browser_sources_filtering_and_containment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs, outputs = root / "input", root / "output"
+            inputs.mkdir()
+            outputs.mkdir()
+            (inputs / "scenes").mkdir()
+            (inputs / "frame.png").write_bytes(png())
+            (inputs / "private.txt").write_text("not media")
+            (outputs / "result.png").write_bytes(png())
+            (root / "outside.png").write_bytes(png())
+            (inputs / "escape.png").symlink_to(root / "outside.png")
+            with patch.object(module.folder_paths, "get_directory_by_type", side_effect=lambda kind: str(root / kind)):
+                response = await self.client.get("/yafv/prompts/browse", params={"source": "input", "kind": "image"})
+                self.assertEqual(response.status, 200)
+                entries = (await response.json())["entries"]
+                self.assertEqual([entry["name"] for entry in entries], ["scenes", "frame.png"])
+                response = await self.client.get("/yafv/prompts/browse", params={"source": "output", "search": "RESULT"})
+                self.assertEqual((await response.json())["entries"][0]["name"], "result.png")
+                response = await self.client.get("/yafv/prompts/browse-file", params={"source": "input", "path": "frame.png"})
+                self.assertEqual(await response.read(), png())
+                for path in ("../outside.png", str(root / "outside.png"), "escape.png", "private.txt"):
+                    response = await self.client.get("/yafv/prompts/browse-file", params={"source": "input", "path": path})
+                    self.assertEqual(response.status, 404, path)
+                for params in ({"source": "temp"}, {"kind": "invalid"}, {"path": ".."}, {"page": "bad"}):
+                    response = await self.client.get("/yafv/prompts/browse", params=params)
+                    self.assertEqual(response.status, 400, params)
+
+    async def test_frame_names_survive_save_keep_and_remove(self):
+        response = await self.save(first=png(), last=png())
+        entry = (await response.json())["entries"][0]
+        self.assertEqual(entry["media_names"], {"first": "first.png", "last": "last.png"})
+        response = await self.save(entry=entry["id"], base=entry["revision"], first_action="remove")
+        entry = (await response.json())["entries"][0]
+        self.assertEqual(entry["media_names"], {"last": "last.png"})
+
     async def test_native_generate_text_parameters_and_original_frames(self):
         first, last = png((64, 32), "red"), png((30, 90), "blue")
         item = module.library.save("scope", "A bird takes flight.", first, last)
@@ -133,7 +170,7 @@ class VideoPromptTests(unittest.IsolatedAsyncioTestCase):
         item = module.library.save("scope", "Prompt", png(), None)
         clip = FakeClip()
         clip.tokenize = lambda *args, **kwargs: {"tokens": [1, 2]}
-        with self.assertRaisesRegex(ValueError, "soporte visual"):
+        with self.assertRaisesRegex(ValueError, "vision-capable model"):
             module.YAFVVideoPrompts().execute("scope", item.id, clip=clip, text="Expand")
         self.assertFalse(clip.calls)
 
