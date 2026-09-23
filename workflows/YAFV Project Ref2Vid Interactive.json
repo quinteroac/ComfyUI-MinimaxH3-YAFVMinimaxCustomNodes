@@ -1,0 +1,1466 @@
+{
+  "last_node_id": 16,
+  "last_link_id": 48,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "YAFVProjectContext",
+      "pos": [
+        -980,
+        180
+      ],
+      "size": [
+        300,
+        220
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 37
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 43
+        },
+        {
+          "name": "clip_frames",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "scene_mode",
+          "type": "COMBO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "context_images",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "context_video_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "project_state",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "context_video",
+          "type": "VIDEO",
+          "links": [
+            36
+          ]
+        },
+        {
+          "name": "context_latent",
+          "type": "LATENT",
+          "links": [
+            38
+          ]
+        },
+        {
+          "name": "generation_length",
+          "type": "INT",
+          "links": [
+            48
+          ]
+        },
+        {
+          "name": "output_frames",
+          "type": "INT",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "my_project",
+        0,
+        22,
+        124,
+        "Continue scene"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        -980,
+        -260
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2,
+            18
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "UNETLoader",
+      "pos": [
+        -650,
+        -260
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "minimax_h3_ref2va_pruned_w4a8_mixed.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        -300,
+        -260
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            4,
+            5,
+            37,
+            42
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "minimax_h3_video_vae_int8_convrot.safetensors"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        -620,
+        120
+      ],
+      "size": [
+        520,
+        520
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 4
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 17
+        },
+        {
+          "name": "ref_images.ref_image_0",
+          "type": "IMAGE",
+          "link": 20
+        },
+        {
+          "name": "ref_images.ref_image_1",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "ref_images.ref_image_2",
+          "type": "IMAGE",
+          "link": 22
+        },
+        {
+          "name": "ref_images.ref_image_3",
+          "type": "IMAGE",
+          "link": 23
+        },
+        {
+          "name": "ref_images.ref_image_4",
+          "type": "IMAGE",
+          "link": 24
+        },
+        {
+          "name": "ref_images.ref_image_5",
+          "type": "IMAGE",
+          "link": 25
+        },
+        {
+          "name": "ref_images.ref_image_6",
+          "type": "IMAGE",
+          "link": 26
+        },
+        {
+          "name": "ref_images.ref_image_7",
+          "type": "IMAGE",
+          "link": 27
+        },
+        {
+          "name": "ref_videos.ref_video_0",
+          "type": "IMAGE",
+          "link": 28
+        },
+        {
+          "name": "ref_videos.ref_video_1",
+          "type": "IMAGE",
+          "link": 29
+        },
+        {
+          "name": "ref_videos.ref_video_2",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "ref_video_audios.ref_video_audio_0",
+          "type": "AUDIO",
+          "link": 30
+        },
+        {
+          "name": "ref_video_audios.ref_video_audio_1",
+          "type": "AUDIO",
+          "link": 31
+        },
+        {
+          "name": "ref_audios.ref_audio_0",
+          "type": "AUDIO",
+          "link": 32
+        },
+        {
+          "name": "ref_audios.ref_audio_1",
+          "type": "AUDIO",
+          "link": 33
+        },
+        {
+          "name": "ref_audios.ref_audio_2",
+          "type": "AUDIO",
+          "link": 34
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 19
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        124
+      ]
+    },
+    {
+      "id": 6,
+      "type": "ConditioningZeroOut",
+      "pos": [
+        250,
+        40
+      ],
+      "size": [
+        250,
+        80
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 39
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "YAFVProjectMotionContext",
+      "pos": [
+        -140,
+        120
+      ],
+      "size": [
+        360,
+        300
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 6
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 42
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 7
+        },
+        {
+          "name": "context_latent",
+          "type": "LATENT",
+          "link": 38
+        },
+        {
+          "name": "context_length",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "video_transition_steps",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "audio_transition_steps",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "video_anchor_only",
+          "type": "BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            39,
+            40
+          ]
+        },
+        {
+          "name": "trim_frames",
+          "type": "INT",
+          "links": [
+            44
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            41
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "22",
+        4,
+        4,
+        true
+      ]
+    },
+    {
+      "id": 16,
+      "type": "YAFVProjectMediaTrim",
+      "pos": [
+        610,
+        430
+      ],
+      "size": [
+        300,
+        260
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 15
+        },
+        {
+          "name": "trim_frames",
+          "type": "INT",
+          "link": 44
+        },
+        {
+          "name": "output_frames",
+          "type": "INT",
+          "link": 45
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            46
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        0,
+        124,
+        24
+      ]
+    },
+    {
+      "id": 7,
+      "type": "MiniMaxH3TwoPassSampler",
+      "pos": [
+        580,
+        70
+      ],
+      "size": [
+        360,
+        560
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_pass1",
+          "type": "MODEL",
+          "link": 3
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 40
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 8
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            9,
+            16
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        false,
+        true,
+        true,
+        8,
+        4,
+        0,
+        1,
+        "lcm",
+        "simple",
+        0,
+        1,
+        "lcm",
+        "simple",
+        false,
+        true,
+        "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+        "megapixels",
+        2,
+        1280,
+        704,
+        2,
+        32,
+        true,
+        true,
+        "cuda",
+        "fp16",
+        24,
+        false,
+        "full",
+        "auto (chunk count)",
+        2,
+        73,
+        22,
+        "preserve",
+        8,
+        4
+      ]
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [
+        610,
+        100
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 9
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        980,
+        100
+      ],
+      "size": [
+        320,
+        300
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 46
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        24,
+        0,
+        "yafv/project_candidates",
+        "video/h264-mp4",
+        false,
+        true,
+        "yuv420p",
+        18,
+        false,
+        false
+      ]
+    },
+    {
+      "id": 10,
+      "type": "YAFVProjectCommit",
+      "pos": [
+        1850,
+        100
+      ],
+      "size": [
+        300,
+        150
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "*",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "timeline",
+          "type": "VIDEO",
+          "links": []
+        },
+        {
+          "name": "project_state",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "my_project",
+        0,
+        "ref2vid",
+        0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "YAFVProjectReview",
+      "pos": [
+        1280,
+        100
+      ],
+      "size": [
+        360,
+        360
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "*",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "links": [
+            35
+          ]
+        },
+        {
+          "name": "review_status",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "my_project",
+        0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        -260
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            14,
+            17,
+            43
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        610,
+        260
+      ],
+      "size": [
+        220,
+        80
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 16
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "YAFVReferenceVideoPrompts",
+      "pos": [
+        -980,
+        430
+      ],
+      "size": [
+        620,
+        700
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 18
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "collection_id",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "revision_id",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "max_length",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "sampling_mode",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "temperature",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "top_k",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "top_p",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "min_p",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "repetition_penalty",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "presence_penalty",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "thinking",
+          "type": "BOOLEAN",
+          "link": null
+        },
+        {
+          "name": "use_default_template",
+          "type": "BOOLEAN",
+          "link": null
+        },
+        {
+          "name": "mtp",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "context_video",
+          "type": "VIDEO",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_prompt",
+          "type": "STRING",
+          "links": [
+            19
+          ]
+        },
+        {
+          "name": "ref_image_0",
+          "type": "IMAGE",
+          "links": [
+            20
+          ]
+        },
+        {
+          "name": "ref_image_1",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        },
+        {
+          "name": "ref_video_0",
+          "type": "IMAGE",
+          "links": [
+            28
+          ]
+        },
+        {
+          "name": "ref_video_audio_0",
+          "type": "AUDIO",
+          "links": [
+            30
+          ]
+        },
+        {
+          "name": "ref_audio_0",
+          "type": "AUDIO",
+          "links": [
+            32
+          ]
+        },
+        {
+          "name": "ref_audio_1",
+          "type": "AUDIO",
+          "links": [
+            33
+          ]
+        },
+        {
+          "name": "ref_audio_2",
+          "type": "AUDIO",
+          "links": [
+            34
+          ]
+        },
+        {
+          "name": "ref_image_2",
+          "type": "IMAGE",
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "ref_image_3",
+          "type": "IMAGE",
+          "links": [
+            23
+          ]
+        },
+        {
+          "name": "ref_image_4",
+          "type": "IMAGE",
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "ref_image_5",
+          "type": "IMAGE",
+          "links": [
+            25
+          ]
+        },
+        {
+          "name": "ref_image_6",
+          "type": "IMAGE",
+          "links": [
+            26
+          ]
+        },
+        {
+          "name": "ref_image_7",
+          "type": "IMAGE",
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "ref_video_1",
+          "type": "IMAGE",
+          "links": [
+            29
+          ]
+        },
+        {
+          "name": "ref_video_audio_1",
+          "type": "AUDIO",
+          "links": [
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "YAFVReferenceVideoPrompts"
+      },
+      "widgets_values": [
+        "[\"reference\",\"segment-0\"]",
+        "",
+        512,
+        "off",
+        0.7,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        0,
+        0,
+        false,
+        true,
+        "auto"
+      ]
+    }
+  ],
+  "links": [
+    [
+      2,
+      2,
+      0,
+      5,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      3,
+      0,
+      7,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      1,
+      "VAE"
+    ],
+    [
+      5,
+      4,
+      0,
+      8,
+      1,
+      "VAE"
+    ],
+    [
+      6,
+      5,
+      0,
+      15,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      7,
+      5,
+      1,
+      15,
+      2,
+      "LATENT"
+    ],
+    [
+      8,
+      6,
+      0,
+      7,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      7,
+      0,
+      8,
+      0,
+      "LATENT"
+    ],
+    [
+      10,
+      8,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      9,
+      0,
+      11,
+      0,
+      "VHS_FILENAMES"
+    ],
+    [
+      14,
+      12,
+      0,
+      13,
+      1,
+      "VAE"
+    ],
+    [
+      15,
+      13,
+      0,
+      16,
+      1,
+      "AUDIO"
+    ],
+    [
+      16,
+      7,
+      0,
+      13,
+      0,
+      "LATENT"
+    ],
+    [
+      17,
+      12,
+      0,
+      5,
+      2,
+      "VAE"
+    ],
+    [
+      18,
+      2,
+      0,
+      14,
+      0,
+      "CLIP"
+    ],
+    [
+      19,
+      14,
+      0,
+      5,
+      19,
+      "STRING"
+    ],
+    [
+      20,
+      14,
+      1,
+      5,
+      3,
+      "IMAGE"
+    ],
+    [
+      21,
+      14,
+      2,
+      5,
+      4,
+      "IMAGE"
+    ],
+    [
+      22,
+      14,
+      8,
+      5,
+      5,
+      "IMAGE"
+    ],
+    [
+      23,
+      14,
+      9,
+      5,
+      6,
+      "IMAGE"
+    ],
+    [
+      24,
+      14,
+      10,
+      5,
+      7,
+      "IMAGE"
+    ],
+    [
+      25,
+      14,
+      11,
+      5,
+      8,
+      "IMAGE"
+    ],
+    [
+      26,
+      14,
+      12,
+      5,
+      9,
+      "IMAGE"
+    ],
+    [
+      27,
+      14,
+      13,
+      5,
+      10,
+      "IMAGE"
+    ],
+    [
+      28,
+      14,
+      3,
+      5,
+      11,
+      "IMAGE"
+    ],
+    [
+      29,
+      14,
+      14,
+      5,
+      12,
+      "IMAGE"
+    ],
+    [
+      30,
+      14,
+      4,
+      5,
+      14,
+      "AUDIO"
+    ],
+    [
+      31,
+      14,
+      15,
+      5,
+      15,
+      "AUDIO"
+    ],
+    [
+      32,
+      14,
+      5,
+      5,
+      16,
+      "AUDIO"
+    ],
+    [
+      33,
+      14,
+      6,
+      5,
+      17,
+      "AUDIO"
+    ],
+    [
+      34,
+      14,
+      7,
+      5,
+      18,
+      "AUDIO"
+    ],
+    [
+      35,
+      11,
+      0,
+      10,
+      0,
+      "VIDEO"
+    ],
+    [
+      36,
+      1,
+      4,
+      14,
+      16,
+      "VIDEO"
+    ],
+    [
+      37,
+      4,
+      0,
+      1,
+      0,
+      "VAE"
+    ],
+    [
+      38,
+      1,
+      5,
+      15,
+      3,
+      "LATENT"
+    ],
+    [
+      39,
+      15,
+      0,
+      6,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      40,
+      15,
+      0,
+      7,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      41,
+      15,
+      2,
+      7,
+      3,
+      "LATENT"
+    ],
+    [
+      42,
+      4,
+      0,
+      15,
+      1,
+      "VAE"
+    ],
+    [
+      43,
+      12,
+      0,
+      1,
+      1,
+      "VAE"
+    ],
+    [
+      44,
+      15,
+      1,
+      16,
+      2,
+      "INT"
+    ],
+    [
+      45,
+      1,
+      7,
+      16,
+      3,
+      "INT"
+    ],
+    [
+      46,
+      16,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      16,
+      1,
+      9,
+      1,
+      "AUDIO"
+    ],
+    [
+      48,
+      1,
+      6,
+      5,
+      22,
+      "INT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "yafv_project_template": {
+      "generator_mode": "ref2vid",
+      "workflow_note": "Generate one segment, inspect the candidate, then use YAFV Project Review with approve/reject before generating the next segment.",
+      "context": "Native YAFV H3 context and synchronized media trim; no Easy Media installation required."
+    }
+  },
+  "version": 0.4
+}

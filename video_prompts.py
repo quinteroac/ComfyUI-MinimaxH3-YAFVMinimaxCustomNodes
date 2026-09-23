@@ -43,7 +43,7 @@ class PromptLibrary:
         with self.lock:
             item = self.revisions.get(revision)
             if item is None or item.collection != collection:
-                raise ValueError("El elemento ya no está disponible. Selecciona uno de la lista; la sesión se borra al reiniciar ComfyUI.")
+                raise ValueError("The item is no longer available. Select one from the list; restarting ComfyUI clears the session.")
             return item
 
     def view(self, key):
@@ -62,7 +62,7 @@ class PromptLibrary:
         with self.lock:
             collection = self.collection(key)
             if entry is not None and collection["entries"].get(entry) != base:
-                raise ValueError("El elemento cambió o fue eliminado en otra ventana. Recarga la lista antes de guardarlo.")
+                raise ValueError("The item changed or was deleted in another window. Refresh the list before saving.")
             entry = entry or uuid.uuid4().hex
             item = PromptRevision(uuid.uuid4().hex, key, entry, prompt, first, last, dict(media or {}), kind)
             self.revisions[item.id] = item
@@ -74,7 +74,7 @@ class PromptLibrary:
         with self.lock:
             collection = self.collection(key)
             if entry not in collection["entries"]:
-                raise ValueError("Selecciona un elemento disponible.")
+                raise ValueError("Select an available item.")
             collection["selected"] = entry
 
     def delete(self, key, entry):
@@ -82,7 +82,7 @@ class PromptLibrary:
             collection = self.collection(key)
             order = list(collection["entries"])
             if entry not in order:
-                raise ValueError("El elemento ya fue eliminado.")
+                raise ValueError("The item was already deleted.")
             position = order.index(entry)
             del collection["entries"][entry]
             if collection["selected"] == entry:
@@ -184,7 +184,7 @@ class VisualPromptClip:
     def tokenize(self, *args, **kwargs):
         tokens = self.clip.tokenize(*args, **kwargs)
         if not contains_image(tokens):
-            raise ValueError("El CLIP conectado no incorporó la imagen de referencia. Usa un modelo con soporte visual o quita los frames para generar texto.")
+            raise ValueError("The connected CLIP did not include the reference image. Use a vision-capable model or remove the frames to generate text.")
         return tokens
 
     def generate(self, *args, **kwargs):
@@ -235,8 +235,12 @@ class YAFVVideoPrompts:
             "thinking": ("BOOLEAN", {"default": False}),
             "use_default_template": ("BOOLEAN", {"default": True}),
             "mtp": (["auto", "off", "2", "3", "4", "5"], {"default": "auto"}),
-        }, "optional": {"clip": ("CLIP",), "text": ("STRING", {"forceInput": True,
-            "tooltip": "Instrucciones para Generate Text. Si no están conectadas o están vacías, se devuelve el prompt original."})}}
+        }, "optional": {
+            "clip": ("CLIP",),
+            "text": ("STRING", {"forceInput": True,
+                "tooltip": "Generate Text instructions. If disconnected or empty, returns the original prompt."}),
+            "context_image": ("IMAGE", {"tooltip": "Project continuity image; replaces the current clip's first frame when connected."}),
+        }}
 
     @classmethod
     def IS_CHANGED(cls, collection_id, revision_id, **kwargs):
@@ -250,17 +254,31 @@ class YAFVVideoPrompts:
         except ValueError as error:
             return str(error)
 
-    def prepare(self, item, needs_visual):
+    def _context_image(self, context_image):
+        if context_image is None:
+            return None
+        if not torch.is_tensor(context_image) or context_image.ndim < 4:
+            raise ValueError("context_image must be a ComfyUI IMAGE batch.")
+        return Image.fromarray(
+            (context_image[:1].detach().cpu().clamp(0, 1)[0].numpy() * 255).round().astype(np.uint8)
+        ).convert("RGB")
+
+    def prepare(self, item, needs_visual, context_image=None, context_video=None):
         first, last = load_frame(item.first), load_frame(item.last)
+        if context_image is not None:
+            first = self._context_image(context_image)
         reference, description = visual_reference(first, last) if needs_visual else (None, "")
         return (image_tensor(first), image_tensor(last)), reference, description
 
     def execute(self, collection_id, revision_id, max_length=512, sampling_mode="off", temperature=.7,
                 top_k=64, top_p=.95, min_p=.05, repetition_penalty=1.05, presence_penalty=0, seed=0,
-                thinking=False, use_default_template=True, mtp="auto", clip=None, text=None):
+                thinking=False, use_default_template=True, mtp="auto", clip=None, text=None,
+                context_image=None, context_video=None):
         item = library.revision(collection_id, revision_id)
         needs_visual = clip is not None and text is not None and bool(text.strip())
-        media, reference, description = self.prepare(item, needs_visual)
+        media, reference, description = self.prepare(
+            item, needs_visual, context_image=context_image, context_video=context_video
+        )
         generated = item.prompt
         if needs_visual:
             prompt = f"INSTRUCTIONS\n{text}\n\nUSER PROMPT\n{item.prompt}"
@@ -274,7 +292,7 @@ class YAFVVideoPrompts:
                 output = TextGenerate.execute(generator_clip, prompt, max_length, sampling, image=image_tensor(reference),
                                               thinking=thinking, use_default_template=use_default_template, mtp=mtp)
             except (AttributeError, NotImplementedError, TypeError) as error:
-                raise RuntimeError(f"El CLIP conectado no pudo ejecutar Generate Text con estas entradas: {error}") from error
+                raise RuntimeError(f"The connected CLIP could not run Generate Text with these inputs: {error}") from error
             generated = output.args[0]
         with library.lock:
             if revision_id in library.revisions:
@@ -301,15 +319,15 @@ async def save_entry(request):
                 fields[part.name] = await part.text()
         key, prompt = fields["collection"], fields["prompt"]
         if not key or not prompt.strip():
-            raise ValueError("Escribe un prompt antes de agregarlo.")
+            raise ValueError("Write a prompt before adding it.")
         old = library.revision(key, fields["base"]) if fields.get("entry") else None
         images = {}
         for name in ("first", "last"):
             action = fields.get(f"{name}_action", "keep")
             if action not in {"keep", "remove", "upload"}:
-                raise ValueError("Acción de imagen inválida.")
+                raise ValueError("Invalid image action.")
             if action == "upload" and name not in uploads:
-                raise ValueError("Falta el archivo de imagen.")
+                raise ValueError("Missing image file.")
             images[name] = uploads[name] if action == "upload" else (getattr(old, name) if action == "keep" and old else None)
         library.save(key, prompt, images["first"], images["last"], fields.get("entry") or None, fields.get("base"))
         collect_unused()
@@ -345,10 +363,10 @@ async def get_frame(request):
         item = library.revision(request.query["collection"], request.match_info["revision"])
         frame = request.match_info["frame"]
         if frame not in {"first", "last"}:
-            raise ValueError("Frame inválido.")
+            raise ValueError("Invalid frame.")
         raw = getattr(item, frame)
         if raw is None:
-            raise ValueError("Este elemento no tiene esa imagen.")
+            raise ValueError("This item does not have that image.")
         return web.Response(body=raw, content_type="image/png", headers={"Cache-Control": "no-store"})
     except ValueError as error:
         return web.json_response({"error": str(error)}, status=404)

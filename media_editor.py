@@ -68,20 +68,20 @@ def history_media(history):
 def resolve_media(media_id):
     media = history_media(PromptServer.instance.prompt_queue.get_history()).get(media_id)
     if media is None:
-        raise ValueError("El medio ya no está en el historial temporal.")
+        raise ValueError("The media is no longer in temporary history.")
     if media["type"] not in {"output", "temp"}:
-        raise ValueError("Solo se admiten resultados output/temp del historial.")
+        raise ValueError("Only output/temp results from history are supported.")
     root = Path(folder_paths.get_directory_by_type(media["type"])).resolve()
     path = (root / media["subfolder"] / media["filename"]).resolve()
     if not path.is_relative_to(root) or not path.is_file():
-        raise ValueError("El archivo no está disponible dentro de su carpeta de resultados.")
+        raise ValueError("The file is unavailable in its output directory.")
     return media, path
 
 
 def number(value, name, minimum=0, maximum=None):
     value = float(value)
     if not math.isfinite(value) or value < minimum or (maximum is not None and value > maximum):
-        raise ValueError(f"Valor inválido: {name}.")
+        raise ValueError(f"Invalid value: {name}.")
     return value
 
 
@@ -102,7 +102,7 @@ async def command(*args, progress=None, duration=1):
         else:
             output, error = await process.communicate()
         if process.returncode:
-            raise ValueError(error.decode(errors="replace")[-1600:] or "FFmpeg no pudo procesar el medio.")
+            raise ValueError(error.decode(errors="replace")[-1600:] or "FFmpeg could not process the media.")
         return output
     finally:
         if process.returncode is None:
@@ -119,7 +119,7 @@ async def probe(path, kind):
     data = json.loads(raw)
     video = next((s for s in data["streams"] if s["codec_type"] == "video"), None)
     if video is None:
-        raise ValueError("El archivo no contiene video.")
+        raise ValueError("The file contains no video.")
     ratio = video.get("avg_frame_rate", "0/1").split("/")
     fps = float(ratio[0]) / float(ratio[1]) if len(ratio) == 2 and float(ratio[1]) else 24
     width, height = video["width"], video["height"]
@@ -132,18 +132,18 @@ async def probe(path, kind):
 
 def validate_strokes(strokes):
     if not isinstance(strokes, list) or len(strokes) > 1000:
-        raise ValueError("Máximo 1000 trazos por clip.")
+        raise ValueError("Maximum 1000 strokes per clip.")
     result = []
     for stroke in strokes:
         color = stroke["color"]
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-            raise ValueError("Color de lápiz inválido.")
+            raise ValueError("Invalid pencil color.")
         points = stroke["points"]
         if not points or len(points) > 20000:
-            raise ValueError("Trazo vacío o demasiado largo.")
-        start, end = number(stroke["start"], "inicio del dibujo"), number(stroke["end"], "fin del dibujo")
+            raise ValueError("Stroke is empty or too long.")
+        start, end = number(stroke["start"], "drawing start"), number(stroke["end"], "drawing end")
         if end <= start:
-            raise ValueError("El dibujo debe tener duración positiva.")
+            raise ValueError("Drawing duration must be positive.")
         result.append({"color": color, "width": number(stroke["width"], "grosor", .00001, 1),
                        "opacity": number(stroke["opacity"], "opacidad", 0, 1), "start": start, "end": end,
                        "points": [(number(p[0], "x", 0, 1), number(p[1], "y", 0, 1)) for p in points]})
@@ -174,7 +174,7 @@ async def frame_image(path, kind, time):
     raw = await command("ffmpeg", "-v", "error", "-i", path, "-ss", time, "-frames:v", 1,
                         "-f", "image2pipe", "-vcodec", "png", "pipe:1")
     if not raw:
-        raise ValueError("No hay frame en ese instante.")
+        raise ValueError("No frame at that timestamp.")
     with Image.open(io.BytesIO(raw)) as image:
         return image.convert("RGBA")
 
@@ -185,7 +185,7 @@ async def render_clip(clip, target, size, fps, directory, progress):
     still = media["kind"] == "image" or clip.get("frame_time") is not None
     start, end = number(clip["in"], "entrada"), number(clip["out"], "salida")
     if end <= start or (not still and end > meta["duration"] + .05):
-        raise ValueError("El tramo está fuera de la duración del video.")
+        raise ValueError("The segment is outside the video duration.")
     # Every clip occupies a whole number of output frames, including its audio.
     count = max(1, round((end - start) * fps))
     duration = count / fps
@@ -231,7 +231,7 @@ async def render_clip(clip, target, size, fps, directory, progress):
 async def render_timeline(data, directory, progress):
     clips = data["clips"]
     if not clips:
-        raise ValueError("El timeline está vacío.")
+        raise ValueError("The timeline is empty.")
     fps = number(data.get("fps", 24), "FPS", 1, 240)
     width = int(number(data["width"], "ancho", 2, 8192))
     height = int(number(data["height"], "alto", 2, 8192))
@@ -300,7 +300,7 @@ async def export_frame(request):
 async def export_video(request):
     job_id = request.match_info["job_id"]
     if job_id in exports:
-        return web.json_response({"error": "La exportación ya está activa."}, status=409)
+        return web.json_response({"error": "An export is already running."}, status=409)
     task = asyncio.current_task()
     exports[job_id] = task
     try:
@@ -320,7 +320,7 @@ async def export_video(request):
             await response.write_eof()
             return response
     except asyncio.CancelledError:
-        return web.json_response({"error": "Exportación cancelada."}, status=409)
+        return web.json_response({"error": "Export cancelled."}, status=409)
     except (ValueError, KeyError, TypeError, OSError) as error:
         return web.json_response({"error": str(error)}, status=400)
     finally:

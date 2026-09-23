@@ -45,36 +45,36 @@ class Editor {
         this.picture = new Image();
         this.video.addEventListener("seeked", () => this.paint());
         this.video.addEventListener("loadeddata", () => this.paint());
-        this.video.addEventListener("error", () => this.message("El navegador no puede reproducir este video.", true));
+        this.video.addEventListener("error", () => this.message("The browser cannot play this video.", true));
         this.root = document.createElement("div"); this.root.className = "yafv-editor";
         this.root.innerHTML = `
-            <header><strong>YAFV · Editor multimedia</strong><span class="muted">Edición temporal</span><button data-action="fullscreen">Ampliar</button></header>
+            <header><strong>YAFV · Media Editor</strong><span class="muted">Temporary editing</span><button data-action="fullscreen">Expand</button></header>
             <div class="workspace">
-              <aside><b>Queue / resultados</b><p class="queue muted"></p>
-                <div class="tools"><select class="filter"><option value="all">Todos</option><option value="image">Imágenes</option><option value="video">Videos</option></select><button data-action="refresh">↻</button></div>
+              <aside><b>Queue / results</b><p class="queue muted"></p>
+                <div class="tools"><select class="filter"><option value="all">All</option><option value="image">Images</option><option value="video">Videos</option></select><button data-action="refresh">↻</button></div>
                 <div class="gallery"></div>
               </aside>
               <section class="monitor">
-                <div class="tools"><button data-action="pencil">✎ Lápiz</button><input class="color" type="color" value="#ff5252" aria-label="Color">
-                  <label>Grosor <input class="brush" type="number" value="8" min="1" max="200"></label>
-                  <label>Opacidad <input class="opacity" type="range" min="0.05" max="1" step="0.05" value="1"></label>
-                  <select class="scope" aria-label="Duración del dibujo"><option value="clip">Clip completo</option><option value="frame">Frame actual</option><option value="range">Intervalo</option></select>
-                  <button data-action="undo">↶</button><button data-action="redo">↷</button><button data-action="clearInk">Limpiar trazos</button>
+                <div class="tools"><button data-action="pencil">✎ Pencil</button><input class="color" type="color" value="#ff5252" aria-label="Color">
+                  <label>Width <input class="brush" type="number" value="8" min="1" max="200"></label>
+                  <label>Opacity <input class="opacity" type="range" min="0.05" max="1" step="0.05" value="1"></label>
+                  <select class="scope" aria-label="Drawing duration"><option value="clip">Entire clip</option><option value="frame">Current frame</option><option value="range">Range</option></select>
+                  <button data-action="undo">↶</button><button data-action="redo">↷</button><button data-action="clearInk">Clear strokes</button>
                 </div>
-                <div class="tools range-tools" hidden><label>Dibujo desde <input class="ink-in" type="number" min="0" step="0.01" value="0"></label><label>hasta <input class="ink-out" type="number" min="0" step="0.01" value="1"></label><span class="muted">segundos dentro del clip</span></div>
-                <div class="stage"><canvas width="1280" height="720"></canvas><div class="hint">Arrastra una imagen o un video al timeline.<br>También puedes hacer doble clic en un resultado.</div></div>
-                <div class="tools transport"><button data-action="previous">−1 frame</button><button data-action="play">▶</button><button data-action="next">+1 frame</button><input class="scrub" type="range" min="0" max="0" step="0.001" value="0" aria-label="Posición"><span class="time">0:00.00</span></div>
+                <div class="tools range-tools" hidden><label>Draw from <input class="ink-in" type="number" min="0" step="0.01" value="0"></label><label>to <input class="ink-out" type="number" min="0" step="0.01" value="1"></label><span class="muted">seconds within the clip</span></div>
+                <div class="stage"><canvas width="1280" height="720"></canvas><div class="hint">Drag an image or video onto the timeline.<br>You can also double-click a result.</div></div>
+                <div class="tools transport"><button data-action="previous">−1 frame</button><button data-action="play">▶</button><button data-action="next">+1 frame</button><input class="scrub" type="range" min="0" max="0" step="0.001" value="0" aria-label="Position"><span class="time">0:00.00</span></div>
               </section>
             </div>
-            <div class="tools"><b>Timeline</b><button data-action="split">Dividir</button><button data-action="remove">Eliminar clip</button><button data-action="duplicate">Duplicar</button>
-              <label>Entrada <input class="trim-in" type="number" min="0" step="0.01" value="0"></label><label>Salida <input class="trim-out" type="number" min="0" step="0.01" value="0"></label>
+            <div class="tools"><b>Timeline</b><button data-action="split">Split</button><button data-action="remove">Delete clip</button><button data-action="duplicate">Duplicate</button>
+              <label>In <input class="trim-in" type="number" min="0" step="0.01" value="0"></label><label>Output <input class="trim-out" type="number" min="0" step="0.01" value="0"></label>
               <label>Zoom <input class="zoom" type="range" min="10" max="200" value="60"></label>
             </div>
             <div class="timeline-scroll"><div class="timeline"><div class="ruler"></div><div class="playhead"></div></div></div>
-            <footer><label>Salida <input class="width" type="number" min="2" max="8192" step="2" value="1280">×<input class="height" type="number" min="2" max="8192" step="2" value="720"></label>
+            <footer><label>Output <input class="width" type="number" min="2" max="8192" step="2" value="1280">×<input class="height" type="number" min="2" max="8192" step="2" value="720"></label>
               <label>FPS <input class="fps" type="number" min="1" max="240" value="24"></label>
-              <button data-action="extract">Frame → timeline</button><button data-action="png">Descargar PNG</button><button data-action="export">Exportar MP4</button><button data-action="cancel" hidden>Cancelar</button>
-              <progress max="1" value="0" hidden></progress><span class="status" role="status">Arrastra resultados al timeline para empezar.</span>
+              <button data-action="extract">Frame → timeline</button><button data-action="png">Download PNG</button><button data-action="export">Export MP4</button><button data-action="cancel" hidden>Cancel</button>
+              <progress max="1" value="0" hidden></progress><span class="status" role="status">Drag results onto the timeline to start.</span>
             </footer>`;
         this.$ = selector => this.root.querySelector(selector);
         this.canvas = this.$("canvas"); this.ctx = this.canvas.getContext("2d");
@@ -190,7 +190,7 @@ class Editor {
         try {
             const data = await (await request("/media")).json();
             if (this.disposed) return;
-            this.$(".queue").textContent = `${data.running} en ejecución · ${data.pending} pendientes`;
+            this.$(".queue").textContent = `${data.running} running · ${data.pending} pending`;
             this.hasFFmpeg = data.ffmpeg;
             const signature = JSON.stringify(data.media);
             if (signature !== this.mediaSignature) {
@@ -199,8 +199,8 @@ class Editor {
                 for (const id of this.metadata.keys()) if (!this.assets.has(id)) this.metadata.delete(id);
                 this.gallery(); this.timeline(); this.sync();
             }
-            if (!data.ffmpeg) this.message("Instala FFmpeg y ffprobe para editar video.", true);
-        } catch (error) { if (!this.disposed) this.message(`No se pudo leer la queue: ${error.message}`, true); }
+            if (!data.ffmpeg) this.message("Install FFmpeg and ffprobe to edit video.", true);
+        } catch (error) { if (!this.disposed) this.message(`Could not read the queue: ${error.message}`, true); }
         finally { this.refreshing = false; }
     }
     gallery() {
@@ -209,7 +209,7 @@ class Editor {
         for (const asset of [...this.assets.values()].reverse()) {
             if (filter !== "all" && asset.kind !== filter) continue;
             const card = document.createElement("button"); card.className = "asset"; card.draggable = true;
-            card.title = `${asset.filename}\nNodo ${asset.node_id} · ${asset.prompt_id}\nArrastra o haz doble clic para añadir`;
+            card.title = `${asset.filename}\nNode ${asset.node_id} · ${asset.prompt_id}\nDrag or double-click to add`;
             const preview = document.createElement(asset.kind === "image" ? "img" : "video");
             preview.src = api.apiURL(`${BASE}/source/${asset.id}`);
             if (asset.kind === "video") { preview.muted = true; preview.preload = "metadata"; }
@@ -222,12 +222,12 @@ class Editor {
         }
         if (!gallery.children.length) {
             const empty = document.createElement("div"); empty.className = "empty";
-            empty.textContent = "Aquí aparecerán los resultados que sigan en el historial temporal de ComfyUI."; gallery.append(empty);
+            empty.textContent = "Results still in ComfyUI's temporary history will appear here."; gallery.append(empty);
         }
     }
     async add(id, index = this.clips.length) {
-        const asset = this.assets.get(id); if (!asset) throw new Error("Este resultado ya no está disponible.");
-        this.message("Cargando medio…");
+        const asset = this.assets.get(id); if (!asset) throw new Error("This result is no longer available.");
+        this.message("Loading media…");
         let meta = this.metadata.get(id);
         if (!meta) { meta = await (await request(`/media/${id}`)).json(); this.metadata.set(id, meta); }
         if (this.disposed || !this.assets.has(id)) return;
@@ -239,7 +239,7 @@ class Editor {
             this.fps = asset.kind === "video" ? Math.min(240, meta.fps) : 24;
             for (const key of ["width", "height", "fps"]) this.$(`.${key}`).value = this[key];
         }
-        this.time = this.clipStart(clip); this.update(); this.message("Medio añadido. Selecciona Lápiz para dibujar.");
+        this.time = this.clipStart(clip); this.update(); this.message("Media added. Select Pencil to draw.");
     }
     trim(clip, key, value) {
         const frame = 1 / this.fps;
@@ -270,7 +270,7 @@ class Editor {
             const block = document.createElement("div"); block.className = `clip ${clip.kind}`; block.draggable = true;
             block.classList.toggle("selected", clip.uid === this.selected); block.classList.toggle("missing", !this.assets.has(clip.media_id));
             block.style.left = `${start * this.pixelsPerSecond}px`; block.style.width = `${duration * this.pixelsPerSecond}px`;
-            const label = document.createElement("span"); label.className = "clip-name"; label.textContent = this.assets.has(clip.media_id) ? clip.name : "No disponible";
+            const label = document.createElement("span"); label.className = "clip-name"; label.textContent = this.assets.has(clip.media_id) ? clip.name : "Unavailable";
             const length = document.createElement("small"); length.textContent = `${duration.toFixed(2)}s`;
             if (this.assets.has(clip.media_id)) {
                 const video = clip.kind === "video" || clip.frame_time != null;
@@ -286,7 +286,7 @@ class Editor {
             block.ondragstart = e => { e.dataTransfer.setData(clipMime, clip.uid); e.dataTransfer.effectAllowed = "move"; };
             for (const key of ["in", "out"]) {
                 const handle = document.createElement("div"); handle.className = `handle ${key === "in" ? "left" : "right"}`;
-                handle.title = key === "in" ? "Recortar entrada" : "Recortar salida / duración";
+                handle.title = key === "in" ? "Trim start" : "Trim end / duration";
                 handle.onpointerdown = e => {
                     e.stopPropagation(); e.preventDefault(); block.draggable = false; handle.setPointerCapture(e.pointerId);
                     this.remember(); this.selected = clip.uid; this.stop(); const origin = e.clientX, initial = clip[key];
@@ -369,7 +369,7 @@ class Editor {
                 this.video.src = url;
                 await new Promise((resolve, reject) => {
                     this.video.onloadedmetadata = resolve;
-                    this.video.onerror = () => reject(new Error("Formato de video no compatible con el navegador."));
+                    this.video.onerror = () => reject(new Error("Video format not supported by the browser."));
                 });
             } else {
                 this.picture = new Image(); this.picture.src = url; await this.picture.decode();
@@ -415,10 +415,10 @@ class Editor {
         const ctx = this.ctx, current = this.locate(this.time);
         ctx.fillStyle = "#080d12"; ctx.fillRect(0, 0, this.width, this.height);
         this.$(".hint").hidden = !!current;
-        if (!current) this.$(".hint").textContent = "Arrastra una imagen o un video al timeline.";
+        if (!current) this.$(".hint").textContent = "Drag an image or video onto the timeline.";
         if (!current) return;
         const { clip, local } = current;
-        if (!this.assets.has(clip.media_id)) { this.$(".hint").hidden = false; this.$(".hint").textContent = "Este medio ya no está en el historial temporal."; return; }
+        if (!this.assets.has(clip.media_id)) { this.$(".hint").hidden = false; this.$(".hint").textContent = "This media is no longer in temporary history."; return; }
         if (!this.ready || this.loaded !== clip.uid) return;
         const rect = this.rect(clip), source = clip.kind === "video" ? this.video : this.picture;
         if (clip.kind === "video" && this.video.readyState < 2) return;
@@ -439,7 +439,7 @@ class Editor {
         let start = clip.in, end = clip.out;
         if (scope === "frame") { start = clip.in + Math.floor(current.local * this.fps + 1e-6) / this.fps; end = Math.min(clip.out, start + 1 / this.fps); }
         if (scope === "range") { start = clip.in + Number(this.$(".ink-in").value); end = Math.min(clip.out, clip.in + Number(this.$(".ink-out").value)); }
-        if (!Number.isFinite(start) || !Number.isFinite(end) || start < clip.in || end <= start) return this.message("El intervalo del dibujo no es válido.", true);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start < clip.in || end <= start) return this.message("The drawing range is invalid.", true);
         this.remember(); this.strokeClip = clip;
         this.stroke = { color: this.$(".color").value, width: clamp(Number(this.$(".brush").value) || 1, 1, 200) / clip.meta.width,
             opacity: Number(this.$(".opacity").value), scope, start, end, points: [this.point(event, clip)] };
@@ -463,31 +463,31 @@ class Editor {
     }
     async png(extract) {
         this.stop(); const current = this.locate(this.time);
-        if (!current) throw new Error("Selecciona una imagen o un frame.");
+        if (!current) throw new Error("Select an image or frame.");
         const { clip, local } = current;
         const sourceTime = clip.frame_time ?? (clip.in + local);
         const strokes = clip.frame_time == null ? clip.strokes : clip.strokes.filter(s => s.start <= clip.in + local && clip.in + local < s.end).map(s => ({ ...s, start: 0, end: sourceTime + 1 }));
         const response = await request("/frame", jsonOptions({ media_id: clip.media_id, time: sourceTime, strokes: extract ? [] : strokes }));
-        if (!extract) { download(await response.blob(), "imagen-editada.png"); this.message("PNG descargado a resolución original."); return; }
+        if (!extract) { download(await response.blob(), "image-editada.png"); this.message("PNG downloaded at original resolution."); return; }
         await response.arrayBuffer();
         this.remember();
         const extracted = { uid: uid(), media_id: clip.media_id, name: `Frame · ${clip.name}`, kind: "image", meta: { ...clip.meta, duration: 3, audio: false },
             frame_time: sourceTime, in: 0, out: 3, strokes: clip.strokes.filter(s => s.start <= clip.in + local && clip.in + local < s.end).map(s => ({ ...structuredClone(s), start: 0, end: 3 })) };
         this.clips.splice(this.clips.indexOf(clip) + 1, 0, extracted); this.selected = extracted.uid;
-        this.time = this.clipStart(extracted); this.update(); this.message("Frame añadido como imagen al timeline.");
+        this.time = this.clipStart(extracted); this.update(); this.message("Frame added to the timeline as an image.");
     }
     async export() {
         if (this.job) return;
-        if (!this.clips.length) throw new Error("El timeline está vacío.");
-        if (this.clips.some(c => !this.assets.has(c.media_id))) throw new Error("Hay medios que ya no están en el historial.");
+        if (!this.clips.length) throw new Error("The timeline is empty.");
+        if (this.clips.some(c => !this.assets.has(c.media_id))) throw new Error("Some media is no longer in history.");
         this.stop(); this.job = uid();
         this.$("progress").hidden = false; this.$("progress").value = 0;
         this.$('[data-action="cancel"]').hidden = false; this.$('[data-action="export"]').disabled = true;
-        this.message("Preparando exportación…");
+        this.message("Preparing export…");
         try {
             const response = await request(`/export/${this.job}`, jsonOptions({ client_id: api.clientId, width: this.width, height: this.height, fps: this.fps, clips: this.clips }));
             const blob = await response.blob();
-            if (!this.disposed && !this.cancelled) { download(blob, "montaje.mp4"); this.message("MP4 descargado."); }
+            if (!this.disposed && !this.cancelled) { download(blob, "montaje.mp4"); this.message("MP4 downloaded."); }
         } finally {
             this.job = null; this.cancelled = false;
             this.$("progress").hidden = true; this.$('[data-action="cancel"]').hidden = true; this.$('[data-action="export"]').disabled = false;
@@ -495,7 +495,7 @@ class Editor {
     }
     async cancel() {
         if (!this.job) return;
-        this.cancelled = true; await request(`/export/${this.job}`, { method: "DELETE" }); this.message("Exportación cancelada.");
+        this.cancelled = true; await request(`/export/${this.job}`, { method: "DELETE" }); this.message("Export cancelled.");
     }
     async act(action) {
         const clip = this.selection();

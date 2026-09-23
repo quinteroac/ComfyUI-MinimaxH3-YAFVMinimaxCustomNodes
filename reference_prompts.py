@@ -1,5 +1,6 @@
 """Session-scoped reference media for MiniMax H3 prompt entries."""
 import asyncio
+import os
 from pathlib import Path
 import tempfile
 import uuid
@@ -43,9 +44,9 @@ def inspect_media(path, kind):
     with av.open(str(path)) as container:
         streams = container.streams.video if kind == "video" else container.streams.audio
         if not streams:
-            raise ValueError(f"El archivo no contiene {kind}.")
+            raise ValueError(f"The file contains no {kind}.")
         if next(container.decode(streams[0]), None) is None:
-            raise ValueError("El archivo no contiene frames decodificables.")
+            raise ValueError("The file contains no decodable frames.")
         return {"audio": bool(container.streams.audio),
                 "pixel_format": "yuv420p" if kind == "video" and streams[0].width % 2 == 0 and streams[0].height % 2 == 0 else "yuv444p"}
 
@@ -54,8 +55,34 @@ def decode_video(path):
     with av.open(str(path)) as container:
         frames = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
     if len(frames) < 5:
-        raise ValueError("MiniMax requiere al menos 5 frames a 24 fps.")
+        raise ValueError("MiniMax requires at least 5 frames at 24 fps.")
     return torch.from_numpy(np.stack(frames).astype(np.float32) / 255.0)
+
+
+def context_video_path(video):
+    """Resolve a ComfyUI VIDEO or VHS filename container to a local file."""
+    if hasattr(video, "get_stream_source"):
+        source = video.get_stream_source()
+        if isinstance(source, (str, os.PathLike)) and os.path.isfile(source):
+            return os.fspath(source)
+        raise ValueError("The context video has no readable local file.")
+    candidates = []
+
+    def collect(value):
+        if isinstance(value, (str, os.PathLike)):
+            candidates.append(os.fspath(value))
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                collect(item)
+
+    collect(video)
+    for path in reversed(candidates):
+        if os.path.isfile(path) and Path(path).suffix.lower() in {".mp4", ".mkv", ".webm", ".mov", ".avi"}:
+            return path
+    raise ValueError("The context video contains no supported file.")
 
 
 def decode_audio(path):
@@ -67,7 +94,7 @@ def decode_audio(path):
             frames.extend(converted.to_ndarray() for converted in resampler.resample(frame))
         frames.extend(converted.to_ndarray() for converted in resampler.resample(None))
         if not frames:
-            raise ValueError("El archivo no contiene audio decodificable.")
+            raise ValueError("The file contains no decodable audio.")
         return {"waveform": torch.from_numpy(np.concatenate(frames, axis=1)).unsqueeze(0),
                 "sample_rate": stream.rate}
 
@@ -120,18 +147,27 @@ class YAFVReferenceVideoPrompts(prompts.YAFVVideoPrompts):
     # Append new slots after the original seven references to preserve workflow links.
     RETURN_TYPES = ("STRING", *("AUDIO" if kind == "audio" else "IMAGE" for kind in MEDIA_TYPES.values()))
     RETURN_NAMES = ("generated_prompt", *MEDIA_TYPES)
-    DESCRIPTION = "Prompts y referencias temporales para MiniMax H3 Reference to Video. Video a 24 fps; audio independiente."
+    DESCRIPTION = "Temporary prompts and references for MiniMax H3 Reference to Video. Video at 24 fps; independent audio."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        inputs = super().INPUT_TYPES()
+        inputs["optional"] = dict(inputs.get("optional", {}))
+        inputs["optional"]["context_video"] = ("VIDEO", {
+            "tooltip": "Approved project video; used only as temporal context for Generate Text. Continuity is applied through the context latent."
+        })
+        return inputs
 
     @classmethod
     def VALIDATE_INPUTS(cls, collection_id, revision_id):
         result = super().VALIDATE_INPUTS(collection_id, revision_id)
         if result is True and prompts.library.revision(collection_id, revision_id).kind != "reference":
-            return "Selecciona un elemento de prompts para Reference to Video."
+            return "Select a Reference to Video prompt item."
         return result
 
-    def prepare(self, item, needs_visual):
+    def prepare(self, item, needs_visual, context_image=None, context_video=None):
         if item.kind != "reference":
-            raise ValueError("Selecciona un elemento de prompts para Reference to Video.")
+            raise ValueError("Select a Reference to Video prompt item.")
         media = {}
         for name, kind in MEDIA_TYPES.items():
             path = item.media.get(name)
@@ -142,7 +178,16 @@ class YAFVReferenceVideoPrompts(prompts.YAFVVideoPrompts):
                     media[name] = prompts.image_tensor(image.convert("RGB"))
             else:
                 media[name] = decode_video(path) if kind == "video" else decode_audio(path)
-        reference, description = reference_sheet(media) if needs_visual else (None, "")
+        prompt_media = media
+        if context_video is not None:
+            path = context_video_path(context_video)
+            prompt_media = dict(media)
+            prompt_media["ref_video_0"] = decode_video(path)
+            try:
+                prompt_media["ref_video_audio_0"] = decode_audio(path)
+            except (ValueError, OSError, av.error.FFmpegError):
+                prompt_media["ref_video_audio_0"] = None
+        reference, description = reference_sheet(prompt_media) if needs_visual else (None, "")
         return tuple(media.values()), reference, description
 
 
@@ -171,19 +216,19 @@ async def save_reference_entry(request):
                     fields[part.name] = await part.text()
             key, prompt = fields["collection"], fields["prompt"]
             if not key or not prompt.strip():
-                raise ValueError("Escribe un prompt antes de agregarlo.")
+                raise ValueError("Write a prompt before adding it.")
             old = prompts.library.revision(key, fields["base"]) if fields.get("entry") else None
             if old:
                 with prompts.library.lock:
                     prompts.library.leases[old.id] += 1
                     leased = old.id
             if old and old.kind != "reference":
-                raise ValueError("El elemento no pertenece a Reference to Video.")
+                raise ValueError("The item does not belong to Reference to Video.")
             media = {n: old.media.get(n) if old else None for n in MEDIA_TYPES}
             for name, kind in MEDIA_TYPES.items():
                 action = fields.get(f"{name}_action", "keep")
                 if action not in {"keep", "remove", "upload"}:
-                    raise ValueError("Acción de archivo inválida.")
+                    raise ValueError("Invalid file action.")
                 if action == "keep":
                     continue
                 media[name] = None
@@ -193,7 +238,7 @@ async def save_reference_entry(request):
                 if action == "remove":
                     continue
                 if name not in uploads:
-                    raise ValueError("Falta el archivo.")
+                    raise ValueError("Missing file.")
                 source = uploads[name]
                 if kind == "image":
                     path = target(".png")
@@ -205,7 +250,7 @@ async def save_reference_entry(request):
                                  "-crf", "18", "-pix_fmt", metadata["pixel_format"], "-movflags", "+faststart", path)
                     with av.open(str(path)) as container:
                         if container.streams.video[0].frames < 5:
-                            raise ValueError("MiniMax requiere al menos 5 frames a 24 fps.")
+                            raise ValueError("MiniMax requires at least 5 frames at 24 fps.")
                     if metadata["audio"] and fields.get(f"{audio_name}_action", "keep") == "keep":
                         soundtrack = target(".wav")
                         await ffmpeg("-i", source, "-map", "0:a:0", "-vn", "-c:a", "pcm_f32le", soundtrack)
@@ -242,7 +287,7 @@ async def get_media(request):
         item = prompts.library.revision(request.query["collection"], request.match_info["revision"])
         name = request.match_info["name"]
         if name not in MEDIA_TYPES or not item.media.get(name):
-            raise ValueError("Este elemento no tiene esa referencia.")
+            raise ValueError("This item does not have that reference.")
         return web.FileResponse(item.media[name], headers={"Cache-Control": "no-store"})
     except ValueError as error:
         return web.json_response({"error": str(error)}, status=404)

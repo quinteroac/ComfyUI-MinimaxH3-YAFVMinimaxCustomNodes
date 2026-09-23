@@ -8,17 +8,17 @@ document.head.append(stylesheet);
 const panels = new Set();
 const BASE = "/yafv/prompts";
 const settingDefinitions = [
-    ["max_length", "Longitud máxima", "number", 1, 32768, 1],
-    ["sampling_mode", "Muestreo", ["off", "on"]],
-    ["temperature", "Temperatura", "number", .01, 2, .01],
+    ["max_length", "Maximum length", "number", 1, 32768, 1],
+    ["sampling_mode", "Sampling", ["off", "on"]],
+    ["temperature", "Temperature", "number", .01, 2, .01],
     ["top_k", "Top K", "number", 0, 1000, 1],
     ["top_p", "Top P", "number", 0, 1, .01],
     ["min_p", "Min P", "number", 0, 1, .01],
-    ["repetition_penalty", "Penalización de repetición", "number", 0, 5, .01],
-    ["presence_penalty", "Penalización de presencia", "number", 0, 5, .01],
-    ["seed", "Semilla", "number", 0, Number.MAX_SAFE_INTEGER, 1],
+    ["repetition_penalty", "Repetition penalty", "number", 0, 5, .01],
+    ["presence_penalty", "Presence penalty", "number", 0, 5, .01],
+    ["seed", "Seed", "number", 0, Number.MAX_SAFE_INTEGER, 1],
     ["thinking", "Thinking", "checkbox"],
-    ["use_default_template", "Plantilla nativa", "checkbox"],
+    ["use_default_template", "Native template", "checkbox"],
     ["mtp", "MTP", ["auto", "off", "2", "3", "4", "5"]],
 ];
 
@@ -39,26 +39,26 @@ class PromptPanel {
             ...Array.from({length: 8}, (_, i) => [`ref_image_${i}`, "image", `ref_image_${i}`]),
             ...Array.from({length: 2}, (_, i) => [
                 [`ref_video_${i}`, "video", `ref_video_${i} · 24 fps`],
-                [`ref_video_audio_${i}`, "audio", `ref_video_audio_${i} · Audio del video`],
+                [`ref_video_audio_${i}`, "audio", `ref_video_audio_${i} · Video audio`],
             ]).flat(),
             ...Array.from({length: 3}, (_, i) => [`ref_audio_${i}`, "audio", `ref_audio_${i}`]),
-        ] : [["first", "image", "First frame · Inicio"], ["last", "image", "Last frame · Final"]];
+        ] : [["first", "image", "First frame"], ["last", "image", "Last frame"]];
         this.node = node; this.collection = null; this.entries = []; this.current = null;
         this.dirty = false; this.drafting = false; this.busy = false; this.disposed = false; this.hydrated = false;
         this.files = {}; this.imageActions = {}; this.urls = {};
         this.root = document.createElement("div"); this.root.className = "yafv-prompts";
         this.root.classList.toggle("reference-prompts", referenceMode);
         this.root.innerHTML = `
-          <header><strong>${referenceMode ? "Prompts para Reference to Video" : "Prompts para video"}</strong><span class="badge">Sesión de ComfyUI</span></header>
-          <div class="unsaved" hidden><p>Hay cambios sin guardar. ¿Qué deseas hacer antes de continuar?</p><div class="actions"><button data-action="saveContinue" class="primary">Guardar y continuar</button><button data-action="discard">Descartar</button><button data-action="stay">Seguir editando</button></div></div>
-          <div class="body"><aside><div class="actions"><b>Mis prompts</b><span class="count muted">0</span><button data-action="new">+ Nuevo</button></div><div class="entries"></div></aside>
-          <section class="form">${referenceMode ? `<div class="reference-toolbar"><button data-action="toggleReferences" aria-expanded="false">+ Añadir referencia</button><span class="reference-count muted"></span><div class="reference-menu" hidden><button data-action="addReference" data-id="image">Imagen</button><button data-action="addReference" data-id="video">Video</button><button data-action="addReference" data-id="audio">Audio</button></div><input class="reference-picker" type="file" hidden></div>` : ""}<div class="frames"></div>
-            <label>Prompt del elemento</label><textarea class="prompt" placeholder="Describe la escena, el movimiento o la acción…" aria-label="Prompt del elemento"></textarea>
-            <div class="actions"><button class="primary" data-action="save">Agregar</button><button class="danger" data-action="delete">Eliminar elemento</button><span class="draft muted"></span></div>
-            <details open><summary>Último prompt de salida</summary><textarea class="generated" readonly placeholder="El resultado aparecerá después de ejecutar el workflow." aria-label="Último prompt de salida"></textarea></details>
+          <header><strong>${referenceMode ? "Reference to Video Prompts" : "Video Prompts"}</strong><span class="badge">ComfyUI session</span></header>
+          <div class="unsaved" hidden><p>You have unsaved changes. What would you like to do before continuing?</p><div class="actions"><button data-action="saveContinue" class="primary">Save and continue</button><button data-action="discard">Discard</button><button data-action="stay">Keep editing</button></div></div>
+          <div class="body"><aside><div class="actions"><b>My prompts</b><span class="count muted">0</span><button data-action="new">+ New</button></div><div class="entries"></div></aside>
+          <section class="form">${referenceMode ? `<div class="reference-toolbar"><button data-action="toggleReferences" aria-expanded="false">+ Add reference</button><span class="reference-count muted"></span><div class="reference-menu" hidden><button data-action="addReference" data-id="image">Image</button><button data-action="addReference" data-id="video">Video</button><button data-action="addReference" data-id="audio">Audio</button></div><input class="reference-picker" type="file" hidden></div>` : ""}<div class="frames"></div>
+            <label>Item prompt</label><textarea class="prompt" placeholder="Describe the scene, movement, or action…" aria-label="Item prompt"></textarea>
+            <div class="actions"><button class="primary" data-action="save">Add</button><button class="danger" data-action="delete">Delete item</button><span class="draft muted"></span></div>
+            <details open><summary>Last output prompt</summary><textarea class="generated" readonly placeholder="The result will appear after running the workflow." aria-label="Last output prompt"></textarea></details>
           </section></div>
-          <details class="advanced"><summary>Opciones de Generate Text</summary><div class="settings"></div><p class="muted">Se utilizan las capacidades del modelo conectado. ${referenceMode ? "Las imágenes y hasta ocho frames de cada video requieren soporte visual. Los audios no se analizan. Al cargar otro video se renueva su pista de audio; puedes sustituirla o quitarla." : "Los frames requieren soporte visual. Las instrucciones se incluyen en el texto enviado al modelo."}</p></details>
-          <footer><span class="selection"></span><span class="status" role="status">Cargando lista…</span><button data-action="refresh">Actualizar</button></footer>`;
+          <details class="advanced"><summary>Generate Text options</summary><div class="settings"></div><p class="muted">Uses the connected model's capabilities. ${referenceMode ? "Images and up to eight frames per video require vision support. Audio is not analyzed. Loading another video replaces its audio track; you can replace or remove it." : "Frames require vision support. Instructions are included in the text sent to the model."}</p></details>
+          <footer><span class="selection"></span><span class="status" role="status">Loading list…</span><button data-action="refresh">Refresh</button></footer>`;
         this.$ = selector => this.root.querySelector(selector);
         this.root.addEventListener("pointerdown", event => event.stopPropagation());
         this.root.addEventListener("wheel", event => event.stopPropagation());
@@ -97,7 +97,7 @@ class PromptPanel {
             if (output?.collection !== this.collection) return;
             if (output.revision === this.current?.revision) {
                 this.$(".generated").value = output.text;
-                this.message("Prompt generado. Las salidas están listas.");
+                this.message("Prompt generated. Outputs are ready.");
             }
             this.refresh();
         };
@@ -127,18 +127,18 @@ class PromptPanel {
     controls() {
         for (const button of this.root.querySelectorAll("button")) button.disabled = this.busy || !this.hydrated;
         this.$('[data-action="refresh"]').disabled = this.busy;
-        this.$('[data-action="save"]').textContent = this.current ? "Guardar cambios" : "Agregar";
+        this.$('[data-action="save"]').textContent = this.current ? "Save changes" : "Add";
         this.$('[data-action="save"]').disabled ||= !this.$(".prompt").value.trim();
         this.$('[data-action="delete"]').disabled ||= !this.current;
         this.$(".prompt").disabled = this.busy || !this.hydrated;
         const selected = this.entries.find(e => e.revision === this.value("revision_id"));
-        this.$(".selection").textContent = selected ? `Ejecutará: ${selected.prompt.slice(0, 65)}` : "Sin elemento seleccionado";
-        this.$(".draft").textContent = this.dirty ? "Cambios sin guardar: la queue usa el elemento guardado." : "";
+        this.$(".selection").textContent = selected ? `Will run: ${selected.prompt.slice(0, 65)}` : "No item selected";
+        this.$(".draft").textContent = this.dirty ? "Unsaved changes: the queue uses the saved item." : "";
         if (this.referenceMode) {
             const counts = ["image", "video", "audio"].map(kind => {
                 const slots = this.referenceSlots(kind), count = slots.filter(([name]) => this.hasMedia(name)).length;
                 this.$(`[data-action="addReference"][data-id="${kind}"]`).disabled ||= count === slots.length;
-                return `${count}/${slots.length} ${{image: "imágenes", video: "videos", audio: "audios"}[kind]}`;
+                return `${count}/${slots.length} ${{image: "images", video: "videos", audio: "audios"}[kind]}`;
             });
             this.$(".reference-count").textContent = counts.join(" · ");
         }
@@ -146,7 +146,7 @@ class PromptPanel {
     }
     mode() {
         const connected = name => this.node.inputs?.find(input => input.name === name)?.link != null;
-        this.$(".badge").textContent = connected("clip") && connected("text") ? "CLIP + instrucciones · generación si text no está vacío" : "Texto original";
+        this.$(".badge").textContent = connected("clip") && connected("text") ? "CLIP + instructions · generates when text is not empty" : "Original text";
     }
     async activate() {
         if (this.disposed || !this.node.graph || this.node.id == null || this.node.id === -1) return;
@@ -163,8 +163,8 @@ class PromptPanel {
             if (this.disposed || key !== this.collection) return;
             const restarted = this.epoch && this.epoch !== data.epoch;
             this.apply(data, force || !this.hydrated || restarted);
-            if (restarted) this.message("ComfyUI se reinició: la lista temporal está vacía.");
-        } catch (error) { if (!this.disposed) this.message(`No se pudo leer la lista: ${error.message}`, true); }
+            if (restarted) this.message("ComfyUI restarted: the temporary list is empty.");
+        } catch (error) { if (!this.disposed) this.message(`Could not read the list: ${error.message}`, true); }
         finally { this.loading = false; if (!this.disposed) this.controls(); }
     }
     apply(data, replaceForm) {
@@ -183,14 +183,14 @@ class PromptPanel {
             const choose = document.createElement("button"); choose.className = "choose"; choose.dataset.action = "select"; choose.dataset.id = entry.id;
             const title = document.createElement("span"); title.className = "title"; title.textContent = entry.prompt;
             const frames = document.createElement("small"); frames.textContent = this.referenceMode
-                ? this.media.filter(([name]) => entry[name]).map(([name]) => name).join(" · ") || "Sin referencias"
+                ? this.media.filter(([name]) => entry[name]).map(([name]) => name).join(" · ") || "No references"
                 : `${entry.first ? "● Inicio" : "○ Inicio"} · ${entry.last ? "● Final" : "○ Final"}`;
             choose.append(title, frames);
             const remove = document.createElement("button"); remove.className = "remove danger"; remove.textContent = "×";
-            remove.title = "Eliminar elemento"; remove.setAttribute("aria-label", "Eliminar elemento"); remove.dataset.action = "delete"; remove.dataset.id = entry.id;
+            remove.title = "Delete item"; remove.setAttribute("aria-label", "Delete item"); remove.dataset.action = "delete"; remove.dataset.id = entry.id;
             row.append(choose, remove); list.append(row);
         }
-        if (!this.entries.length) { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = this.referenceMode ? "Agrega un prompt y sus referencias opcionales. La lista dura hasta reiniciar ComfyUI." : "Agrega un prompt y, si quieres, sus frames inicial y final. La lista dura hasta reiniciar ComfyUI."; list.append(empty); }
+        if (!this.entries.length) { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = this.referenceMode ? "Add a prompt and optional references. The list lasts until ComfyUI restarts." : "Add a prompt and optional first and last frames. The list lasts until ComfyUI restarts."; list.append(empty); }
     }
     markDirty() { this.dirty = true; this.controls(); }
     releaseURLs() {
@@ -210,7 +210,7 @@ class PromptPanel {
         } else {
             for (const [frame] of this.media) this.preview(frame);
         }
-        this.message(entry ? "Elemento seleccionado. Ejecuta el workflow desde la queue de ComfyUI." : "Escribe un prompt y pulsa Agregar.");
+        this.message(entry ? "Item selected. Run the workflow from the ComfyUI queue." : "Write a prompt and click Add.");
         this.controls();
     }
     referenceSlots(kind) {
@@ -250,7 +250,7 @@ class PromptPanel {
     }
     setFile(frame, kind, file) {
         if (!file || this.busy || !this.hydrated || this.disposed) return;
-        if (file.type && !file.type.startsWith(`${kind}/`) && file.type !== "application/octet-stream") return this.message(`Selecciona un archivo de ${kind}.`, true);
+        if (file.type && !file.type.startsWith(`${kind}/`) && file.type !== "application/octet-stream") return this.message(`Select a ${kind} file.`, true);
         if (this.urls[frame]) URL.revokeObjectURL(this.urls[frame]);
         this.files[frame] = file; this.imageActions[frame] = "upload"; this.urls[frame] = URL.createObjectURL(file);
         if (this.referenceMode) this.renderMedia();
@@ -269,16 +269,16 @@ class PromptPanel {
         if (element.tagName !== "IMG") element.pause();
         if (url) element.src = url; else element.removeAttribute("src");
         if (element.tagName !== "IMG") element.load();
-        section.querySelector(".media-note").textContent = autoAudio ? "Se extraerá al guardar, si el video tiene audio." : "";
+        section.querySelector(".media-note").textContent = autoAudio ? "Extracted when saving if the video contains audio." : "";
         if (section.classList.contains("soundtrack")) {
             section.querySelector('[data-action="removeImage"]').hidden = !this.hasMedia(frame);
-            section.querySelector(".choose-file").textContent = this.hasMedia(frame) ? "Sustituir audio" : "Adjuntar audio";
+            section.querySelector(".choose-file").textContent = this.hasMedia(frame) ? "Replace audio" : "Attach audio";
         }
     }
     frameControl(frame, kind, label, parent = this.$(".frames"), embedded = false) {
         const section = document.createElement("div"); section.className = `${embedded ? "soundtrack" : "frame"} ${frame}`;
         const tag = kind === "image" ? "img" : kind;
-        section.innerHTML = `<b>${label}</b>${embedded ? `<button class="choose-file">Adjuntar audio</button>` : `<div class="drop-zone" role="button" tabindex="0" aria-label="Cargar ${frame}"><span>Arrastra un archivo<br>o pulsa para ${this.referenceMode ? "sustituir" : "cargar"}</span>${kind === "image" ? `<img class="media-preview" hidden alt="${frame}">` : ""}</div>`}${kind !== "image" ? `<${tag} class="media-preview" controls preload="metadata" hidden></${tag}>` : ""}<small class="media-note"></small><input type="file" accept="${kind}/*" hidden><button data-action="removeImage" data-id="${frame}">Quitar ${kind === "image" ? "imagen" : kind}</button>${kind === "video" ? '<div class="soundtrack-container"></div>' : ""}`;
+        section.innerHTML = `<b>${label}</b>${embedded ? `<button class="choose-file">Attach audio</button>` : `<div class="drop-zone" role="button" tabindex="0" aria-label="Load ${frame}"><span>Drag a file<br>or click to ${this.referenceMode ? "replace" : "load"}</span>${kind === "image" ? `<img class="media-preview" hidden alt="${frame}">` : ""}</div>`}${kind !== "image" ? `<${tag} class="media-preview" controls preload="metadata" hidden></${tag}>` : ""}<small class="media-note"></small><input type="file" accept="${kind}/*" hidden><button data-action="removeImage" data-id="${frame}">Remove ${kind === "image" ? "image" : kind}</button>${kind === "video" ? '<div class="soundtrack-container"></div>' : ""}`;
         const input = section.querySelector("input"), drop = section.querySelector(".drop-zone, .choose-file");
         drop.onclick = () => { if (!this.busy && this.hydrated) input.click(); };
         if (!embedded) drop.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); drop.click(); } };
@@ -318,7 +318,7 @@ class PromptPanel {
             if (this.files[frame]) form.set(frame, this.files[frame]);
         }
         const data = await (await request(this.referenceMode ? "/reference-entry" : "/entry", {method: "POST", body: form})).json();
-        if (!this.disposed) { this.apply(data, true); this.message("Elemento guardado en la sesión de ComfyUI."); }
+        if (!this.disposed) { this.apply(data, true); this.message("Item saved in the ComfyUI session."); }
     }
     async action(action, id) {
         switch (action) {
@@ -335,7 +335,7 @@ class PromptPanel {
                 break;
             }
             case "save": await this.save(); break;
-            case "new": await this.guard(() => { this.show(null); this.drafting = true; this.message("Nuevo borrador. La queue seguirá usando la selección guardada hasta que pulses Agregar."); }); break;
+            case "new": await this.guard(() => { this.show(null); this.drafting = true; this.message("New draft. The queue uses the saved selection until you click Add."); }); break;
             case "select": await this.guard(async () => {
                 const data = await (await request("/select", post({collection: this.collection, entry: id}))).json();
                 if (!this.disposed) this.apply(data, true);
