@@ -115,6 +115,14 @@ Restart ComfyUI once after installing this node and reload the browser. No new
 Python dependencies are required. Tests exercise the native Generate Text path
 with a fake CLIP, without loading or downloading model weights.
 
+## YAFV · Storyboard Prompt
+
+Add **YAFV → storyboard → YAFV · Storyboard Prompt** to create a general-purpose
+storyboard prompt. Choose between 1 and 8 scenes (4 by default), describe the
+overall scene, style and each panel, then edit the final text directly in the
+node. The `storyboard_prompt` output is plain text and contains only the fixed
+storyboard structure; no LLM or prompt enhancer is used.
+
 ## YAFV · Prompts para Reference to Video
 
 Add **YAFV → video → YAFV · Prompts para Reference to Video**. It uses the same

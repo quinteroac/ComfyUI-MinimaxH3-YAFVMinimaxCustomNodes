@@ -3,6 +3,7 @@ from .media_editor import YAFVMediaEditor
 from .video_prompts import YAFVVideoPrompts
 from .reference_prompts import YAFVReferenceVideoPrompts
 from .h3_extend import YAFVH3VideoExtend, YAFVH3EncodeAV
+from .storyboard import YAFVStoryboardPrompt
 
 NODE_CLASS_MAPPINGS = {"MiniMaxH3TwoPassSampler": MiniMaxH3TwoPassSampler}
 NODE_DISPLAY_NAME_MAPPINGS = {"MiniMaxH3TwoPassSampler": "MiniMax H3 · Two Pass"}
@@ -12,6 +13,8 @@ NODE_CLASS_MAPPINGS["YAFVVideoPrompts"] = YAFVVideoPrompts
 NODE_DISPLAY_NAME_MAPPINGS["YAFVVideoPrompts"] = "YAFV · Prompts para video"
 NODE_CLASS_MAPPINGS["YAFVReferenceVideoPrompts"] = YAFVReferenceVideoPrompts
 NODE_DISPLAY_NAME_MAPPINGS["YAFVReferenceVideoPrompts"] = "YAFV · Prompts para Reference to Video"
+NODE_CLASS_MAPPINGS["YAFVStoryboardPrompt"] = YAFVStoryboardPrompt
+NODE_DISPLAY_NAME_MAPPINGS["YAFVStoryboardPrompt"] = "YAFV · Storyboard Prompt"
 WEB_DIRECTORY = "./web"
 
 NODE_CLASS_MAPPINGS.update({
