@@ -12,6 +12,10 @@ MiniMax H3 nodes.
 
 Continuity uses native H3 context latents and synchronized media trimming.
 The previous clip is not inserted into creative `ref_video` slots.
+Set `target_width` and `target_height` on Project Context to the generation
+node's dimensions. Context frames are resized in RGB before VAE encoding, so
+the context latent matches the new segment's canvas even when the approved
+video was upscaled.
 
 Project Context's `scene_mode` defaults to **Continue scene**. Select
 **New scene** for a scene cut at any segment index: image, last-frame,

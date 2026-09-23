@@ -17,8 +17,9 @@ def apply_context(conditioning, latent, context_latent, context_length=22,
     video, audio = latent["samples"].unbind()
     if source_video.shape[2] < steps or (source_video.shape[2] - steps) % 5:
         raise ValueError("Context does not contain enough phase-aligned H3 tokens")
-    if video.shape[2] <= steps or source_video.shape[:2] + source_video.shape[3:] != video.shape[:2] + video.shape[3:]:
-        raise ValueError("Context and target must share resolution and leave room for new frames")
+    if (video.shape[2] <= steps or source_video.shape[:2] != video.shape[:2]
+            or source_video.shape[-2:] != video.shape[-2:]):
+        raise ValueError("Context and target must share resolution, batch and latent channels, and leave room for new frames")
     tail = source_video[:, :, -steps:].to(video)
     audio_steps = min(round(count * 5 / 3), source_audio.shape[-1])
     if audio_steps < 1 or audio_steps >= audio.shape[-1]:

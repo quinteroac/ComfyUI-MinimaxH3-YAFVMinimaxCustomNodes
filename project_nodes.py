@@ -276,7 +276,9 @@ def _extract_frame(path: str, timestamp: float, width: int, height: int) -> torc
     result = subprocess.run(
         [
             "ffmpeg", "-v", "error", "-ss", f"{max(0.0, timestamp):.6f}", "-i", path,
-            "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "pipe:1",
+            # Avoid the default YUV420 -> RGB conversion's cumulative dark bias.
+            "-vf", "scale=flags=bicubic+accurate_rnd+full_chroma_int",
+            "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "image2pipe", "-vcodec", "png", "pipe:1",
         ],
         capture_output=True,
         check=False,
@@ -365,6 +367,10 @@ class YAFVProjectContext(io.ComfyNode):
                 io.String.Input("project_name", default="default"),
                 io.Int.Input("segment_index", default=0, min=0),
                 io.Int.Input("context_frames", default=22, min=5, max=120),
+                io.Int.Input("target_width", default=1344, min=32, max=8192,
+                             tooltip="Match the generation node's width; context frames are resized before VAE encoding."),
+                io.Int.Input("target_height", default=768, min=32, max=8192,
+                             tooltip="Match the generation node's height; context frames are resized before VAE encoding."),
                 io.Image.Input("initial_frame", optional=True),
                 io.Vae.Input("vae", optional=True),
                 io.Vae.Input("audio_vae", optional=True),
@@ -387,6 +393,7 @@ class YAFVProjectContext(io.ComfyNode):
 
     @classmethod
     def execute(cls, project_name: str, segment_index: int, context_frames: int = 22,
+                target_width: int = 1344, target_height: int = 768,
                 initial_frame=None, vae=None, audio_vae=None, clip_frames: int = 124,
                 scene_mode: str = "Continue scene"):
         scene_mode = {"Continuar escena": "Continue scene", "Nueva escena": "New scene"}.get(scene_mode, scene_mode)
@@ -404,6 +411,9 @@ class YAFVProjectContext(io.ComfyNode):
             return io.NodeOutput(None, initial_frame, "", state, None, None,
                                  int(clip_frames), int(clip_frames))
         metadata = _ffprobe(str(previous))
+        target_width, target_height = int(target_width), int(target_height)
+        if target_width < 32 or target_height < 32:
+            raise ValueError("Target width and height must be at least 32 pixels")
         fps = metadata["fps"] or 24.0
         duration = metadata["duration"]
         count = max(5, int(context_frames))
@@ -411,7 +421,7 @@ class YAFVProjectContext(io.ComfyNode):
         start = max(0.0, duration - (count / fps))
         timestamps = [start + index / fps for index in range(count)]
         frames = torch.stack([
-            _extract_frame(str(previous), timestamp, metadata["width"], metadata["height"])
+            _extract_frame(str(previous), timestamp, target_width, target_height)
             for timestamp in timestamps
         ], dim=0)
         context_latent = None
