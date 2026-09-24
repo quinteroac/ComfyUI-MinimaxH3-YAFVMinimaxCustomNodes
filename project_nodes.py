@@ -22,7 +22,9 @@ from typing import Any
 
 import folder_paths
 import comfy.model_management as model_management
-from .project_continuity import apply_context, trim_media
+from .project_continuity import apply_context, project_lengths, trim_media
+from comfy.nested_tensor import NestedTensor
+from safetensors.torch import load_file, save_file
 import numpy as np
 import torch
 from PIL import Image
@@ -235,7 +237,44 @@ def _ffprobe(path: str) -> dict[str, Any]:
         "height": int(video.get("height") or 0),
         "fps": _parse_rate(video.get("avg_frame_rate") or video.get("r_frame_rate") or "24/1"),
         "duration": max(0.0, duration),
+        "frames": int(video.get("nb_frames") or round(duration * _parse_rate(video.get("avg_frame_rate") or "24/1"))),
     }
+
+
+def _load_context_latents(directory, generation):
+    relative = generation.get("context_latents")
+    if not relative:
+        return None, None
+    path = (directory / relative).resolve()
+    if directory.resolve() not in path.parents:
+        raise ValueError("Invalid project context path")
+    tensors = load_file(str(path))
+    return tuple({"samples": NestedTensor((tensors[f"{stage}_video"], tensors[f"{stage}_audio"]))}
+                 for stage in ("pass1", "final"))
+
+
+def _context_tensors(latent_pass1, latent_final, trim_frames, metadata):
+    if not latent_pass1.get("yafv_clean", True):
+        raise ValueError("Saving project context requires pass1_return_with_leftover_noise=False")
+    if abs(metadata["fps"] - 24.0) > 0.01:
+        raise ValueError("Project latent context requires a 24 fps video")
+    tensors = {}
+    for stage, latent in (("pass1", latent_pass1), ("final", latent_final)):
+        samples = latent["samples"]
+        if not getattr(samples, "is_nested", False):
+            raise ValueError("Project context requires audiovisual H3 latents")
+        video, audio = samples.unbind()
+        tokens = video.shape[2]
+        frames = 5 + ((tokens - 2) // 5) * 17
+        if tokens < 2 or (tokens - 2) % 5 or int(trim_frames) + metadata["frames"] != frames:
+            raise ValueError("Saved video must end at the latent's final frame; connect Project Context output_frames to Media Trim and Motion Context trim_frames to Commit")
+        if stage == "final" and (video.shape[-1] * 16, video.shape[-2] * 16) != (metadata["width"], metadata["height"]):
+            raise ValueError("Commit the decoded Pass 2 video before any pixel upscale or frame interpolation")
+        if audio.shape[-1] != round(frames * 5 / 3):
+            raise ValueError("Project audio and video latents must have the same duration")
+        tensors[f"{stage}_video"] = video.detach().to(device="cpu", copy=True).contiguous()
+        tensors[f"{stage}_audio"] = audio.detach().to(device="cpu", copy=True).contiguous()
+    return tensors
 
 
 def _encode_context_av(path: str, start: float, duration: float, video_latent: Any,
@@ -374,7 +413,8 @@ class YAFVProjectContext(io.ComfyNode):
                 io.Image.Input("initial_frame", optional=True),
                 io.Vae.Input("vae", optional=True),
                 io.Vae.Input("audio_vae", optional=True),
-                io.Int.Input("clip_frames", default=124, min=5, max=3600, optional=True),
+                io.Int.Input("clip_frames", default=124, min=5, max=3600, optional=True,
+                             tooltip="Requested new frames. Continuations round up to a multiple of 17 to keep the visible end aligned with the saved latent."),
                 io.Combo.Input("scene_mode", options=["Continue scene", "New scene"],
                                default="Continue scene", optional=True,
                                tooltip="New scene skips previous context without changing the project or clip index."),
@@ -388,6 +428,7 @@ class YAFVProjectContext(io.ComfyNode):
                 io.Latent.Output("context_latent"),
                 io.Int.Output("generation_length"),
                 io.Int.Output("output_frames"),
+                io.Latent.Output("context_latent_pass2"),
             ],
         )
 
@@ -399,17 +440,16 @@ class YAFVProjectContext(io.ComfyNode):
         scene_mode = {"Continuar escena": "Continue scene", "Nueva escena": "New scene"}.get(scene_mode, scene_mode)
         if scene_mode not in ("Continue scene", "New scene"):
             raise ValueError("Invalid scene_mode")
-        clip_frames = max(5, int(clip_frames))
-        clip_frames += (5 - clip_frames) % 17
+        generation_length, output_frames = project_lengths(clip_frames)
         manifest = _load_manifest(project_name)
         state = json.dumps(manifest, ensure_ascii=False)
         if scene_mode == "New scene":
             return io.NodeOutput(None, None, "", state, None, None,
-                                 int(clip_frames), int(clip_frames))
+                                 generation_length, output_frames, None)
         previous = _active_video_path(project_name, int(segment_index) - 1, approved_only=True)
         if previous is None:
             return io.NodeOutput(None, initial_frame, "", state, None, None,
-                                 int(clip_frames), int(clip_frames))
+                                 generation_length, output_frames, None)
         metadata = _ffprobe(str(previous))
         target_width, target_height = int(target_width), int(target_height)
         if target_width < 32 or target_height < 32:
@@ -418,14 +458,20 @@ class YAFVProjectContext(io.ComfyNode):
         duration = metadata["duration"]
         count = max(5, int(context_frames))
         count += (5 - count) % 17
+        generation_length, output_frames = project_lengths(clip_frames, count)
         start = max(0.0, duration - (count / fps))
         timestamps = [start + index / fps for index in range(count)]
         frames = torch.stack([
             _extract_frame(str(previous), timestamp, target_width, target_height)
             for timestamp in timestamps
         ], dim=0)
-        context_latent = None
-        if vae is not None:
+        approved = _active_generation(manifest, int(segment_index) - 1, approved_only=True)
+        context_latent, context_latent_pass2 = _load_context_latents(_project_dir(project_name), approved)
+        if context_latent is not None:
+            video = context_latent["samples"].unbind()[0]
+            if (video.shape[-1], video.shape[-2]) != (target_width // 16, target_height // 16):
+                raise ValueError("Saved Pass 1 context has a different resolution; keep the previous Pass 1 size or start a New scene")
+        elif vae is not None:
             video_latent = vae.encode(frames[..., :3])
             if audio_vae is not None:
                 context_latent = _encode_context_av(
@@ -433,10 +479,13 @@ class YAFVProjectContext(io.ComfyNode):
                 )
             else:
                 context_latent = {"samples": video_latent}
+        for context in (context_latent, context_latent_pass2):
+            if context is not None:
+                context["yafv_context_length"] = count
         return io.NodeOutput(
             frames, frames[-1:].contiguous(), str(previous), state,
             InputImpl.VideoFromFile(str(previous)), context_latent,
-            int(clip_frames) + ((count + 16) // 17) * 17, int(clip_frames),
+            generation_length, output_frames, context_latent_pass2,
         )
 
 
@@ -518,6 +567,9 @@ class YAFVProjectCommit(io.ComfyNode):
                 io.AnyType.Input("video"),
                 io.String.Input("generator_mode", default="ref2vid", optional=True),
                 io.Int.Input("seed", default=0, optional=True),
+                io.Latent.Input("latent_pass1", optional=True),
+                io.Latent.Input("latent_final", optional=True),
+                io.Int.Input("trim_frames", default=0, min=0, optional=True, force_input=True),
             ],
             outputs=[io.Video.Output("timeline"), io.String.Output("project_state")],
             is_output_node=True,
@@ -525,7 +577,10 @@ class YAFVProjectCommit(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, project_name: str, segment_index: int, video: Any, generator_mode: str = "ref2vid", seed: int = 0):
+    def execute(cls, project_name: str, segment_index: int, video: Any, generator_mode: str = "ref2vid", seed: int = 0,
+                latent_pass1=None, latent_final=None, trim_frames=0):
+        if (latent_pass1 is None) != (latent_final is None):
+            raise ValueError("Connect both latent_pass1 and latent_final to Commit")
         manifest = _load_manifest(project_name)
         directory = _project_dir(project_name)
         segment = _segment(manifest, int(segment_index))
@@ -537,19 +592,33 @@ class YAFVProjectCommit(io.ComfyNode):
         segment_dir.mkdir(parents=True, exist_ok=True)
         target = segment_dir / f"generation_{generation:03d}.mp4"
         source, temporary = _local_video_source(video)
+        context_path = None
         try:
+            if latent_pass1 is not None:
+                metadata = _ffprobe(source)
+                tensors = _context_tensors(latent_pass1, latent_final, trim_frames, metadata)
+                context_path = target.with_suffix(".safetensors")
+                save_file(tensors, str(context_path), metadata={
+                    "trim_frames": str(int(trim_frames)), "output_frames": str(metadata["frames"]),
+                })
+                del tensors
             shutil.copy2(source, target)
         finally:
             for path in temporary:
                 Path(path).unlink(missing_ok=True)
-        segment["generations"].append({
+        record = {
             "generation": generation,
             "video": str(target.relative_to(directory)),
             "status": "approved",
             "generator_mode": str(generator_mode or "ref2vid"),
             "seed": int(seed),
             "created_at": time.time(),
-        })
+        }
+        if context_path is not None:
+            record["context_latents"] = str(context_path.relative_to(directory))
+            record["trim_frames"] = int(trim_frames)
+            record["output_frames"] = metadata["frames"]
+        segment["generations"].append(record)
         segment["active_generation"] = generation
         segment["status"] = "approved"
         _save_manifest(project_name, manifest)

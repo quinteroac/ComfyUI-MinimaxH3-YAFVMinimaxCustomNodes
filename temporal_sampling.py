@@ -295,8 +295,11 @@ def sample_temporal(model, seed, steps, cfg, sampler_name, scheduler, positive,
         )
     elif chunk_callback is not None:
         chunk_callback(1, 1, 0, frame_boundary(video.shape[2]))
+    video_mask = torch.ones((1, 1, video.shape[2], 1, 1), dtype=torch.float32)
+    if latent.get("noise_mask") is not None:
+        video_mask = video_mask * latent["noise_mask"].unbind()[0].to(device="cpu", dtype=torch.float32)
     mask = NestedTensor((
-        torch.ones((1, 1, video.shape[2], 1, 1), dtype=torch.float32),
+        video_mask,
         torch.zeros((1, 1, 2, audio.shape[-1]), dtype=torch.float32),
     ))
     progress = comfy.utils.ProgressBar(steps - start_step)

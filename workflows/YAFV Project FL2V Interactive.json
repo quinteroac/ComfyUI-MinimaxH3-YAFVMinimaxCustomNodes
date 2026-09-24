@@ -1,6 +1,6 @@
 {
   "last_node_id": 16,
-  "last_link_id": 49,
+  "last_link_id": 53,
   "nodes": [
     {
       "id": 1,
@@ -90,6 +90,13 @@
           "type": "INT",
           "links": [
             45
+          ]
+        },
+        {
+          "name": "context_latent_pass2",
+          "type": "LATENT",
+          "links": [
+            50
           ]
         }
       ],
@@ -375,7 +382,8 @@
           "name": "trim_frames",
           "type": "INT",
           "links": [
-            44
+            44,
+            53
           ]
         },
         {
@@ -492,6 +500,12 @@
           "name": "latent",
           "type": "LATENT",
           "link": 41
+        },
+        {
+          "name": "context_latent_pass2",
+          "type": "LATENT",
+          "shape": 7,
+          "link": 50
         }
       ],
       "outputs": [
@@ -500,7 +514,15 @@
           "type": "LATENT",
           "links": [
             9,
-            16
+            16,
+            52
+          ]
+        },
+        {
+          "name": "latent_pass1",
+          "type": "LATENT",
+          "links": [
+            51
           ]
         }
       ],
@@ -650,6 +672,24 @@
           "name": "video",
           "type": "*",
           "link": 20
+        },
+        {
+          "name": "latent_pass1",
+          "type": "LATENT",
+          "shape": 7,
+          "link": 51
+        },
+        {
+          "name": "latent_final",
+          "type": "LATENT",
+          "shape": 7,
+          "link": 52
+        },
+        {
+          "name": "trim_frames",
+          "type": "INT",
+          "shape": 7,
+          "link": 53
         }
       ],
       "outputs": [
@@ -1164,6 +1204,38 @@
       14,
       0,
       "CLIP"
+    ],
+    [
+      50,
+      1,
+      8,
+      7,
+      4,
+      "LATENT"
+    ],
+    [
+      51,
+      7,
+      1,
+      10,
+      1,
+      "LATENT"
+    ],
+    [
+      52,
+      7,
+      0,
+      10,
+      2,
+      "LATENT"
+    ],
+    [
+      53,
+      15,
+      1,
+      10,
+      3,
+      "INT"
     ]
   ],
   "groups": [],

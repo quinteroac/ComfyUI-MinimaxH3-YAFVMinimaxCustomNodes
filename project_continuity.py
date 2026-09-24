@@ -3,12 +3,23 @@ import torch
 from comfy.nested_tensor import NestedTensor
 
 
+def project_lengths(clip_frames, context_frames=0):
+    requested = max(5, int(clip_frames))
+    if context_frames:
+        output = ((requested + 16) // 17) * 17
+        return output + int(context_frames), output
+    output = requested + (5 - requested) % 17
+    return output, output
+
+
 def apply_context(conditioning, latent, context_latent, context_length=22,
                   video_transition_steps=4, audio_transition_steps=4,
                   video_anchor_only=True):
     count = int(context_length)
     if count not in (5, 22, 39, 56):
         raise ValueError("context_length must be 5, 22, 39 or 56")
+    if context_latent.get("yafv_context_length", count) != count:
+        raise ValueError("Match Motion Context context_length to Project Context context_frames")
     steps = 2 + 5 * ((count - 5) // 17)
     samples = context_latent["samples"]
     if not getattr(samples, "is_nested", False):
@@ -61,7 +72,8 @@ def apply_context(conditioning, latent, context_latent, context_length=22,
         masks = old.unbind() if getattr(old, "is_nested", False) else (old, None)
         vm = vm if masks[0] is None else vm * masks[0].to(vm)
         am = am if masks[1] is None else am * masks[1].to(am)
-    result = dict(latent, samples=NestedTensor((video, audio)), noise_mask=NestedTensor((vm, am)))
+    result = dict(latent, samples=NestedTensor((video, audio)), noise_mask=NestedTensor((vm, am)),
+                  yafv_context_length=count)
     return positive, count, result
 
 

@@ -136,6 +136,16 @@ class SamplingTests(unittest.TestCase):
         self.assertTrue(sampler.call_args.kwargs["disable_noise"])
         torch.testing.assert_close(output["samples"].unbind()[0], latent["samples"].unbind()[0])
 
+    def test_preserves_project_context_mask(self):
+        video_mask = torch.ones_like(self.video[:, :1])
+        video_mask[:, :, :7] = 0
+        latent = dict(self.latent, noise_mask=NestedTensor((video_mask, torch.ones_like(self.audio[:, :1]))))
+        with patch.object(temporal.comfy.sample, "sample", return_value=latent["samples"]) as sampler:
+            temporal.sample_temporal(self.model, 123, 8, 1, "lcm", "simple", [], [], latent, 4, True, 56, 22)
+        vm, am = sampler.call_args.kwargs["noise_mask"].unbind()
+        torch.testing.assert_close(vm, video_mask)
+        self.assertFalse(am.any())
+
     def test_conditioning_cache_is_released_on_sampler_failure(self):
         def fail(*args, **kwargs):
             wrapper = self.model.clone.return_value.add_wrapper_with_key.call_args.args[2]

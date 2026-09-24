@@ -11,6 +11,7 @@ from nodes import VAEDecode, common_ksampler
 from server import PromptServer
 
 from .h3_upscaler import H3Upscaler, model_names
+from .project_continuity import apply_context
 from .temporal_sampling import refine_audio, sample_temporal, window_sizes
 
 
@@ -23,8 +24,8 @@ def without_keyframes(conditioning):
 class MiniMaxH3TwoPassSampler:
     CATEGORY = "MiniMax H3/sampling"
     FUNCTION = "sample"
-    RETURN_TYPES = ("LATENT",)
-    RETURN_NAMES = ("latent",)
+    RETURN_TYPES = ("LATENT", "LATENT")
+    RETURN_NAMES = ("latent", "latent_pass1")
     DESCRIPTION = "Two-pass audiovisual sampling with optional 3D upscale and an immediate Pass 1 preview."
 
     def __init__(self):
@@ -76,6 +77,7 @@ class MiniMaxH3TwoPassSampler:
                 "model_pass2": ("MODEL", {"tooltip": "Unconnected: use model_pass1."}),
                 "video_vae": ("VAE", {"tooltip": "Required only for Pass 1 preview."}),
                 "audio_vae": ("VAE", {"tooltip": "Required only when preview audio is enabled."}),
+                "context_latent_pass2": ("LATENT", {"tooltip": "Approved previous clip at Pass 2 resolution, from Project Context."}),
                 "pass2_sampling_mode": (["full", "temporal"], {"default": "full",
                     "tooltip": "Temporal refines overlapping video windows. Choose whether to preserve or refine audio separately."}),
                 "pass2_chunking_mode": (["auto (chunk count)", "manual (frames)"], {"default": "auto (chunk count)",
@@ -116,7 +118,7 @@ class MiniMaxH3TwoPassSampler:
                audio_vae=None, unique_id=None, pass2_sampling_mode="full",
                pass2_chunking_mode="auto (chunk count)", pass2_chunk_count=2,
                pass2_chunk_frames=73, pass2_overlap_frames=22, pass2_audio_mode="preserve",
-               pass2_audio_steps=8, pass2_audio_start_step=4):
+               pass2_audio_steps=8, pass2_audio_start_step=4, context_latent_pass2=None):
         if enable_pass2 and not 1 <= split_step < total_steps:
             raise ValueError("With Pass 2 enabled, split_step must be between 1 and total_steps - 1.")
         if enable_pass2 and pass2_sampling_mode == "temporal":
@@ -155,6 +157,7 @@ class MiniMaxH3TwoPassSampler:
                 last_step=split_step if enable_pass2 else total_steps,
                 force_full_denoise=not (enable_pass2 and pass1_return_with_leftover_noise),
             )[0]
+            pass1 = dict(result, yafv_clean=not (enable_pass2 and pass1_return_with_leftover_noise))
 
             if enable_pass1_preview:
                 mm.throw_exception_if_processing_interrupted()
@@ -204,6 +207,14 @@ class MiniMaxH3TwoPassSampler:
                 second_model = model_pass1 if model_pass2 is None else model_pass2
                 positive_pass2 = without_keyframes(positive)
                 negative_pass2 = without_keyframes(negative)
+                if context_latent_pass2 is not None:
+                    count = latent.get("yafv_context_length")
+                    if count is None:
+                        raise ValueError("Pass 2 context requires Project Motion Context on the Pass 1 latent")
+                    positive_pass2, _, result = apply_context(
+                        positive_pass2, result, context_latent_pass2, count,
+                        video_transition_steps=0, audio_transition_steps=0, video_anchor_only=False,
+                    )
                 if pass2_sampling_mode == "temporal":
                     def chunk_callback(chunk, chunks, frame_start, frame_end):
                         notify("pass2", chunk=chunk, chunks=chunks,
@@ -226,7 +237,7 @@ class MiniMaxH3TwoPassSampler:
                     )[0]
             mm.throw_exception_if_processing_interrupted()
             notify("complete")
-            return {"ui": {"h3_preview": [preview] if preview else []}, "result": (result,)}
+            return {"ui": {"h3_preview": [preview] if preview else []}, "result": (result, pass1)}
         except mm.InterruptProcessingException:
             notify("cancelled")
             raise
